@@ -17,6 +17,7 @@ from core.database import get_db
 from core.tasks import run_bot_logic
 from services.s3_manager import S3Manager
 from core.bot_manager import BotManager
+from services.exchange_factory import ExchangeFactory
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -184,8 +185,7 @@ def create_trial_subscription(
         credentials = user_credentials[0]
         
         # Validate API credentials work with testnet
-        from services.exchange_factory import validate_exchange_credentials
-        is_valid, message = validate_exchange_credentials(
+        is_valid, message = ExchangeFactory.validate_exchange_credentials(
             exchange_name=credentials.exchange.value,
             api_key=credentials.api_key,
             api_secret=credentials.api_secret,

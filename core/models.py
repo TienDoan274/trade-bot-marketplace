@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, Text, JSON, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from core.database import Base
 import enum
+from datetime import datetime
 
 class UserRole(enum.Enum):
     USER = "USER"
@@ -50,11 +51,11 @@ class User(Base):
     api_secret = Column(String(255))
     
     # Relationships
+    subscriptions = relationship("Subscription", back_populates="user")
+    exchange_credentials = relationship("ExchangeCredentials", back_populates="user")
+    bot_drafts = relationship("BotDraft", back_populates="user")
     developed_bots = relationship("Bot", back_populates="developer", foreign_keys="Bot.developer_id")
     approved_bots = relationship("Bot", back_populates="approved_by_user", foreign_keys="Bot.approved_by")
-    subscriptions = relationship("Subscription", back_populates="user")
-    reviews = relationship("BotReview", back_populates="user")
-    exchange_credentials = relationship("ExchangeCredentials", back_populates="user", cascade="all, delete-orphan")
 
 class ExchangeCredentials(Base):
     """User's API credentials for different exchanges"""
@@ -95,6 +96,7 @@ class BotCategory(Base):
     
     # Relationships
     bots = relationship("Bot", back_populates="category")
+    drafts = relationship("BotDraft", back_populates="category")
 
 class Bot(Base):
     __tablename__ = "bots"
@@ -267,7 +269,7 @@ class BotReview(Base):
     created_at = Column(DateTime, server_default=func.now())
     
     # Relationships
-    user = relationship("User", back_populates="reviews")
+    user = relationship("User")
     bot = relationship("Bot", back_populates="reviews")
 
 class BotPerformance(Base):
@@ -448,3 +450,23 @@ class SubscriptionInvoice(Base):
     # Relationships
     subscription = relationship("Subscription", back_populates="invoices")
     user = relationship("User")
+
+class BotDraft(Base):
+    """Model for storing bot code drafts"""
+    __tablename__ = "bot_drafts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    bot_code = Column(Text, nullable=False)  # The actual bot code
+    category_id = Column(Integer, ForeignKey("bot_categories.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User", back_populates="bot_drafts")
+    category = relationship("BotCategory", back_populates="drafts")
+    
+    class Config:
+        orm_mode = True

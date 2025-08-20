@@ -25,7 +25,7 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Email already registered")
     return crud.create_user(db=db, user=user)
 
-@router.post("/token", response_model=schemas.Token)
+@router.post("/token")
 async def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: Session = Depends(get_db)
@@ -41,7 +41,13 @@ async def login_for_access_token(
     access_token = security.create_access_token(
         data={"sub": str(user.id), "role": user.role.value}
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "user_id": user.id,
+        "email": user.email,
+        "role": user.role.value
+    }
 
 @router.get("/me", response_model=schemas.UserProfile)
 def get_current_user_profile(
@@ -199,9 +205,9 @@ def validate_exchange_credentials(
         raise HTTPException(status_code=404, detail="Credentials not found")
     
     # Validate using exchange factory
-    from services.exchange_factory import validate_exchange_credentials
+    from services.exchange_factory import ExchangeFactory
     
-    is_valid, message = validate_exchange_credentials(
+    is_valid, message = ExchangeFactory.validate_exchange_credentials(
         exchange_name=credentials.exchange.value,
         api_key=credentials.api_key,
         api_secret=credentials.api_secret,

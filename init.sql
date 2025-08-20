@@ -14,6 +14,8 @@ DROP TABLE IF EXISTS trades;
 DROP TABLE IF EXISTS bot_reviews;
 DROP TABLE IF EXISTS bot_performance;
 DROP TABLE IF EXISTS bot_files;
+DROP TABLE IF EXISTS bot_drafts;
+DROP TABLE IF EXISTS payments;
 DROP TABLE IF EXISTS subscriptions;
 DROP TABLE IF EXISTS exchange_credentials;
 DROP TABLE IF EXISTS bots;
@@ -276,6 +278,28 @@ CREATE TABLE bot_files (
     FOREIGN KEY (bot_id) REFERENCES bots(id) ON DELETE CASCADE
 );
 
+-- Create bot_drafts table
+CREATE TABLE bot_drafts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    bot_code TEXT NOT NULL,
+    category_id INT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    -- Foreign key constraints
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (category_id) REFERENCES bot_categories(id) ON DELETE SET NULL,
+    
+    -- Indexes for better performance
+    INDEX idx_user_id (user_id),
+    INDEX idx_category_id (category_id),
+    INDEX idx_created_at (created_at),
+    INDEX idx_updated_at (updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Create performance_logs table
 CREATE TABLE performance_logs (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -314,6 +338,23 @@ CREATE TABLE subscription_invoices (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Create payments table
+CREATE TABLE payments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    subscription_id INT NOT NULL,
+    amount DECIMAL(10, 2),
+    currency VARCHAR(10) DEFAULT 'USD',
+    payment_method VARCHAR(50),
+    payment_status VARCHAR(50),
+    payment_provider VARCHAR(50),
+    external_payment_id VARCHAR(255),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    processed_at DATETIME,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (subscription_id) REFERENCES subscriptions(id)
+);
+
 -- Create indexes for better performance
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_bots_developer_id ON bots(developer_id);
@@ -327,6 +368,7 @@ CREATE INDEX idx_exchange_credentials_user_id ON exchange_credentials(user_id);
 CREATE INDEX idx_bot_pricing_plans_bot_id ON bot_pricing_plans(bot_id);
 CREATE INDEX idx_bot_promotions_bot_id ON bot_promotions(bot_id);
 CREATE INDEX idx_subscription_invoices_subscription_id ON subscription_invoices(subscription_id);
+CREATE INDEX idx_payments_subscription_id ON payments(subscription_id);
 
 -- Insert default admin user
 INSERT INTO users (email, hashed_password, role, developer_name) VALUES

@@ -21,8 +21,11 @@ RUN pip install --upgrade pip && \
 # Copy application code
 COPY . .
 
+# Create static directory if it doesn't exist
+RUN mkdir -p static
+
 # Expose port
 EXPOSE 8000
 
 # Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "core.main:app", "--host", "0.0.0.0", "--port", "8000"]

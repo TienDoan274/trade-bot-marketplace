@@ -26,7 +26,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 giờ
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Cấu hình OAuth2
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Kiểm tra mật khẩu thô với mật khẩu đã mã hóa."""
@@ -80,6 +80,10 @@ async def get_current_active_user(current_user: Annotated[models.User, Depends(g
 
 async def get_current_active_developer(current_user: Annotated[models.User, Depends(get_current_active_user)]) -> models.User:
     """Yêu cầu người dùng phải có vai trò là DEVELOPER hoặc ADMIN."""
+    # In development mode, bypass role check
+    if os.getenv("DEVELOPMENT_MODE", "false").lower() == "true":
+        return current_user
+    
     if current_user.role.value not in ["DEVELOPER", "ADMIN"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

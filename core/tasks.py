@@ -9,6 +9,7 @@ import inspect
 import os
 import tempfile
 import sys
+import types
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -150,63 +151,52 @@ def initialize_bot(subscription):
         logger.error(traceback.format_exc())
         return None
 
-def execute_trade_action(db, subscription, exchange, action, current_price):
-    """Execute trade action"""
-    try:
-        from core import crud
+def execute_trade_action(exchange_client, action, subscription, market_context):
+    """
+    Execute trade action using the new prediction cycle logic.
+    
+    Args:
+        exchange_client: Exchange client instance
+        action: Action dictionary from bot
+        subscription: Subscription object
+        market_context: Market context information
         
+    Returns:
+        Trade details dictionary
+    """
+    try:
         # Get trading pair
         trading_pair = subscription.trading_pair or 'BTC/USDT'
         exchange_symbol = trading_pair.replace('/', '')
         
+        # Get current price
+        current_price = market_context.get('current_price', 0)
+        if not current_price:
+            current_price = exchange_client.get_current_price(trading_pair)
+        
         # Get balance info
         try:
+            balance = market_context.get('balance', {})
             base_asset = trading_pair.split('/')[0]  # BTC from BTC/USDT
             quote_asset = trading_pair.split('/')[1]  # USDT from BTC/USDT
-        
-            base_balance = exchange.get_balance(base_asset)
-            quote_balance = exchange.get_balance(quote_asset)
-        
-            base_total = float(base_balance.free) + float(base_balance.locked)
-            quote_total = float(quote_balance.free) + float(quote_balance.locked)
             
-            # Calculate portfolio value in USDT
-            portfolio_value = quote_total + (base_total * current_price)
+            base_balance = balance.get(base_asset, 0)
+            quote_balance = balance.get(quote_asset, 0)
             
-            logger.info(f"Balance - {base_asset}: {base_total}, {quote_asset}: {quote_total}, Portfolio: ${portfolio_value:.2f}")
+            logger.info(f"Balance - {base_asset}: {base_balance}, {quote_asset}: {quote_balance}")
             
         except Exception as e:
             logger.warning(f"Could not get balance info: {e}")
-            base_total = 0
-            quote_total = 0
-            portfolio_value = 0
+            base_balance = 0
+            quote_balance = 0
         
         # Execute trade based on action
-        if action.action == "BUY":
+        if action['action'] == "BUY":
             # Calculate buy amount
-            if action.type == "PERCENTAGE":
-                # Use percentage of quote balance
-                buy_amount_usdt = quote_total * (action.value / 100)
-                # Use exchange's calculate_quantity method for proper precision
-                quantity_str, quantity_info = exchange.calculate_quantity(
-                    symbol=exchange_symbol,
-                    side="BUY",
-                    amount=buy_amount_usdt,
-                    price=current_price
-                )
-                buy_quantity = float(quantity_str)
-            else:
-                # Fixed amount in base currency
-                quantity_str, quantity_info = exchange.calculate_quantity(
-                    symbol=exchange_symbol,
-                    side="BUY",
-                    amount=action.value,
-                    price=current_price
-                )
-                buy_quantity = float(quantity_str)
+            trade_amount = action['amount']
             
             # Check if we have enough quote currency
-            if buy_quantity * current_price > quote_total:
+            if trade_amount > quote_balance:
                 logger.warning(f"Insufficient {quote_asset} balance for buy order")
                 return {
                     'success': False,
@@ -215,65 +205,47 @@ def execute_trade_action(db, subscription, exchange, action, current_price):
             
             # Place buy order
             try:
-                order = exchange.create_market_order(
+                # Calculate quantity based on trade amount
+                quantity = trade_amount / current_price
+                
+                # Use exchange's calculate_quantity method for proper precision
+                quantity_str, quantity_info = exchange_client.calculate_quantity(
+                    symbol=exchange_symbol,
+                    side="BUY",
+                    amount=trade_amount,
+                    price=current_price
+                )
+                
+                order = exchange_client.create_market_order(
                     symbol=exchange_symbol,
                     side="BUY",
                     quantity=quantity_str
                 )
-                logger.info(f"Buy order executed: {order}")
                 
-                # Log trade to database
-                crud.log_bot_action(
-                    db, subscription.id, "BUY_EXECUTED",
-                    f"Bought {buy_quantity} {base_asset} at ${current_price:.2f}. Order: {order.order_id}"
-                )
+                logger.info(f"Buy order executed: {order}")
                 
                 return {
                     'success': True,
-                    'order_id': order.order_id,
+                    'order_id': getattr(order, 'order_id', 'N/A'),
                     'quantity': quantity_str,
                     'current_price': current_price,
-                    'usdt_value': buy_quantity * current_price,
-                    'percentage_used': action.value,
+                    'usdt_value': trade_amount,
                     'base_asset': base_asset
                 }
                 
             except Exception as e:
                 logger.error(f"Buy order failed: {e}")
-                crud.log_bot_action(
-                    db, subscription.id, "BUY_FAILED",
-                    f"Failed to buy {buy_quantity} {base_asset}: {str(e)}"
-                )
                 return {
                     'success': False,
                     'error': str(e)
                 }
                 
-        elif action.action == "SELL":
+        elif action['action'] == "SELL":
             # Calculate sell amount
-            if action.type == "PERCENTAGE":
-                # Use percentage of base balance
-                sell_amount = base_total * (action.value / 100)
-                # Use exchange's calculate_quantity method for proper precision
-                quantity_str, quantity_info = exchange.calculate_quantity(
-                    symbol=exchange_symbol,
-                    side="SELL",
-                    amount=sell_amount,
-                    price=current_price
-                )
-                sell_quantity = float(quantity_str)
-            else:
-                # Fixed amount in base currency
-                quantity_str, quantity_info = exchange.calculate_quantity(
-                    symbol=exchange_symbol,
-                    side="SELL",
-                    amount=action.value,
-                    price=current_price
-                )
-                sell_quantity = float(quantity_str)
+            trade_amount = action['amount']
             
             # Check if we have enough base currency
-            if sell_quantity > base_total:
+            if trade_amount > base_balance:
                 logger.warning(f"Insufficient {base_asset} balance for sell order")
                 return {
                     'success': False,
@@ -282,286 +254,342 @@ def execute_trade_action(db, subscription, exchange, action, current_price):
             
             # Place sell order
             try:
-                order = exchange.create_market_order(
+                # Use exchange's calculate_quantity method for proper precision
+                quantity_str, quantity_info = exchange_client.calculate_quantity(
+                    symbol=exchange_symbol,
+                    side="SELL",
+                    amount=trade_amount,
+                    price=current_price
+                )
+                
+                order = exchange_client.create_market_order(
                     symbol=exchange_symbol,
                     side="SELL",
                     quantity=quantity_str
                 )
-                logger.info(f"Sell order executed: {order}")
                 
-                # Log trade to database
-                crud.log_bot_action(
-                    db, subscription.id, "SELL_EXECUTED",
-                    f"Sold {sell_quantity} {base_asset} at ${current_price:.2f}. Order: {order.order_id}"
-                )
+                logger.info(f"Sell order executed: {order}")
                 
                 return {
                     'success': True,
-                    'order_id': order.order_id,
+                    'order_id': getattr(order, 'order_id', 'N/A'),
                     'quantity': quantity_str,
                     'current_price': current_price,
-                    'usdt_value': sell_quantity * current_price,
-                    'percentage_used': action.value,
+                    'usdt_value': trade_amount,
                     'base_asset': base_asset
                 }
                 
             except Exception as e:
                 logger.error(f"Sell order failed: {e}")
-                crud.log_bot_action(
-                    db, subscription.id, "SELL_FAILED",
-                    f"Failed to sell {sell_quantity} {base_asset}: {str(e)}"
-                )
                 return {
                     'success': False,
                     'error': str(e)
                 }
         
-        return {
-            'success': False,
-            'error': 'Invalid action type'
-        }
+        elif action['action'] == "HOLD":
+            return {
+                'success': True,
+                'message': 'No trade executed (HOLD signal)',
+                'action': 'HOLD'
+            }
         
+        else:
+            return {
+                'success': False,
+                'error': f"Unknown action: {action['action']}"
+            }
+            
     except Exception as e:
         logger.error(f"Error executing trade action: {e}")
-        logger.error(traceback.format_exc())
-        return False
+        return {
+            'success': False,
+            'error': str(e)
+        }
 
-@app.task(bind=True, autoretry_for=(Exception,), retry_kwargs={'max_retries': 3, 'countdown': 60})
-def run_bot_logic(self, subscription_id: int):
+@app.task
+def send_trade_notification(user_email: str, bot_name: str, action: dict, trade_details: dict, subscription):
     """
-    Main task to run bot logic
+    Send trade notification email to user.
+    
+    Args:
+        user_email: User's email address
+        bot_name: Name of the bot
+        action: Action dictionary from bot
+        trade_details: Trade execution details
+        subscription: Subscription object
     """
     try:
-        # Import here to avoid circular imports
-        from core import models
-        from core import schemas
-        from core import crud
-        from core.database import SessionLocal
-        from services.exchange_factory import ExchangeFactory
+        from services.sendgrid_email_service import SendGridEmailService
+        from services.gmail_smtp_service import GmailSMTPService
         
-        db = SessionLocal()
+        # Prepare email content
+        subject = f"Bot {bot_name} - {action.get('action', 'ACTION')} Signal"
         
+        # Create email body
+        body = f"""
+        Bot: {bot_name}
+        Action: {action.get('action', 'N/A')}
+        Reason: {action.get('reason', 'N/A')}
+        Amount: {action.get('amount', 'N/A')}
+        Confidence: {action.get('confidence', 'N/A')}
+        
+        Trade Details:
+        Success: {trade_details.get('success', 'N/A')}
+        """
+        
+        if not trade_details.get('success'):
+            body += f"Error: {trade_details.get('error', 'N/A')}"
+        else:
+            body += f"Order ID: {trade_details.get('order_id', 'N/A')}"
+            body += f"Quantity: {trade_details.get('quantity', 'N/A')}"
+            body += f"Price: ${trade_details.get('current_price', 'N/A')}"
+        
+        # Try SendGrid first
         try:
-            # Get subscription
-            subscription = crud.get_subscription_by_id(db, subscription_id)
-            if not subscription:
-                logger.error(f"Subscription {subscription_id} not found")
+            sendgrid_service = SendGridEmailService()
+            success = sendgrid_service.send_email(user_email, subject, body)
+            if success:
+                logger.info(f"Trade notification sent via SendGrid to {user_email}")
                 return
-
-            # Skip if subscription is not active
-            if subscription.status != models.SubscriptionStatus.ACTIVE:
-                logger.info(f"Subscription {subscription_id} is not active (status: {subscription.status}), skipping")
+        except Exception as e:
+            logger.warning(f"SendGrid failed: {e}")
+        
+        # Fallback to Gmail SMTP
+        try:
+            gmail_service = GmailSMTPService()
+            success = gmail_service.send_email(user_email, subject, body)
+            if success:
+                logger.info(f"Trade notification sent via Gmail SMTP to {user_email}")
                 return
-
-            # Initialize bot
-            bot = initialize_bot(subscription)
-            if not bot:
-                logger.error(f"Failed to initialize bot for subscription {subscription_id}")
-                crud.update_subscription_status(db, subscription_id, schemas.SubscriptionStatus.ERROR)
-                return
-
-            # Get exchange credentials - prioritize exchange_credentials table
-            exchange_type = subscription.exchange_type or schemas.ExchangeType.BINANCE
-            use_testnet = getattr(subscription, 'is_testnet', True)
-            if getattr(subscription, 'is_trial', False):
-                use_testnet = True
-            
-            api_key = None
-            api_secret = None
-            
-            # First try to get from exchange_credentials table
-            logger.info(f"Looking for exchange credentials for user {subscription.user.email}")
-            credentials = crud.get_user_exchange_credentials(
-                db, 
-                user_id=subscription.user.id, 
-                exchange=exchange_type.value,
-                is_testnet=use_testnet
-            )
-            if credentials:
-                cred = credentials[0]  # Get first matching credential
-                api_key = cred.api_key
-                api_secret = cred.api_secret
-                logger.info(f"Found exchange credentials for {exchange_type.value} (testnet={use_testnet})")
-            else:
-                # Fallback to user's direct API credentials
-                logger.info(f"No exchange credentials found, checking user direct credentials")
-                api_key = subscription.user.api_key
-                api_secret = subscription.user.api_secret
-                if api_key and api_secret:
-                    logger.info(f"Using user direct API credentials")
-            
-            if not api_key or not api_secret:
-                logger.error(f"No valid API credentials for subscription {subscription_id}")
-                crud.log_bot_action(
-                    db, subscription_id, "ERROR", 
-                    "No exchange API credentials configured. Please add your exchange credentials in settings."
-                )
-                return
-
-            logger.info(f"Creating exchange client for subscription {subscription_id} (testnet={use_testnet})")
-            
-            exchange = ExchangeFactory.create_exchange(
-                exchange_name=exchange_type.value,
-                api_key=api_key,
-                api_secret=api_secret,
-                testnet=use_testnet
-            )
-            
-            # Get current market data
-            trading_pair = subscription.trading_pair or 'BTC/USDT'
-            exchange_symbol = trading_pair.replace('/', '')
-            try:
-                ticker = exchange.get_ticker(exchange_symbol)
-                current_price = float(ticker['price'])
-            except Exception as e:
-                logger.error(f"Failed to get ticker for {trading_pair}: {e}")
-                crud.log_bot_action(
-                    db, subscription_id, "ERROR", 
-                    f"Failed to get ticker for {trading_pair}: {str(e)}"
-                )
-                return
-
-            # Set bot's exchange client
-            bot.exchange_client = exchange
-            
-            # Create subscription config
-            subscription_config = {
-                'subscription_id': subscription_id,
-                'timeframe': subscription.timeframe,
-                    'trading_pair': trading_pair,
-                'is_testnet': use_testnet,
-                'exchange_type': exchange_type.value,
-                'user_id': subscription.user.id
-                }
-
-                # Execute bot prediction
-            final_action = bot.execute_full_cycle(subscription.timeframe, subscription_config)
-                
-            if final_action:
-                logger.info(f"Bot {subscription.bot.name} executed with action: {final_action.action}, value: {final_action.value}, reason: {final_action.reason}")
-                
-                # Log action to database
-                crud.log_bot_action(
-                    db, subscription_id, final_action.action,
-                    f"{final_action.reason}. Value: {final_action.value or 0.0}. Price: ${current_price}"
-                )
-                
-            # Get balance info for BUY/SELL actions (real API call)
-                balance_info = ""
-                if final_action.action in ["BUY", "SELL"]:
-                    try:
-                    # Get balance from exchange using real API
-                        base_asset = trading_pair.split('/')[0]  # BTC from BTC/USDT
-                        quote_asset = trading_pair.split('/')[1]  # USDT from BTC/USDT
-                        
-                        base_balance = exchange.get_balance(base_asset)
-                        quote_balance = exchange.get_balance(quote_asset)
-                        
-                        base_total = float(base_balance.free) + float(base_balance.locked)
-                        quote_total = float(quote_balance.free) + float(quote_balance.locked)
-                        
-                        # Calculate portfolio value in USDT
-                        portfolio_value = quote_total + (base_total * current_price)
-                        
-                        mode_label = "TESTNET" if bool(subscription.is_testnet) else "LIVE"
-                        balance_info = f"\n💼 Account Balance ({mode_label}):\n" \
-                                        f"   • {base_asset}: {base_total:.6f} (Free: {base_balance.free}, Locked: {base_balance.locked})\n" \
-                                        f"   • {quote_asset}: {quote_total:.2f} (Free: {quote_balance.free}, Locked: {quote_balance.locked})\n" \
-                                        f"   • Portfolio Value: ~${portfolio_value:.2f} USDT\n"
-                    except Exception as e:
-                        logger.warning(f"Could not get balance info: {e}")
-                        mode_label = "TESTNET" if bool(subscription.is_testnet) else "LIVE"
-                        balance_info = f"\n💼 Account Balance ({mode_label}): Unable to fetch - {str(e)[:100]}\n"
-            
-                # Execute actual trading (if not HOLD)
-                trade_result = False
-                trade_details = None
-                
-                if final_action.action != "HOLD":
-                    try:
-                        trade_result_data = execute_trade_action(db, subscription, exchange, final_action, current_price)
-                        trade_result = trade_result_data.get('success', False)
-                        trade_details = trade_result_data
-                        
-                        if trade_result:
-                            logger.info(f"Trade executed successfully: {final_action.action}")
-                        else:
-                            logger.warning(f"Trade execution failed: {final_action.action}")
-                    except Exception as e:
-                        logger.error(f"Failed to execute trade: {e}")
-                        trade_details = {
-                            'success': False,
-                            'error': str(e)
-                        }
-                        crud.log_bot_action(
-                            db, subscription_id, "TRADE_ERROR",
-                            f"Failed to execute trade: {str(e)}"
-                        )
-                else:
-                    # For HOLD actions, no trade execution
-                    trade_details = {
-                        'success': True,
-                        'message': 'No trade executed (HOLD signal)'
-                    }
-                
-                # Send email notification AFTER trade execution
-                try:
-                    from datetime import datetime
-                    from services.email_templates import send_combined_notification
-                    
-                    # Different emoji for different actions
-                    action_emoji = {
-                        "BUY": "🟢",
-                        "SELL": "🔴", 
-                        "HOLD": "🟡"
-                    }.get(final_action.action, "📊")
-                    
-                    # Send combined notification with trade result
-                    send_combined_notification(
-                        subscription.user.email,
-                        subscription.bot.name,
-                        final_action.action,
-                        {
-                            'trading_pair': trading_pair,
-                            'current_price': current_price,
-                            'reason': final_action.reason,
-                            'confidence': final_action.value or 'N/A',
-                            'timeframe': subscription.timeframe,
-                            'is_testnet': bool(subscription.is_testnet),
-                            'balance_info': balance_info,
-                            'subscription_id': subscription_id,
-                            'trade_details': trade_details
-                        }
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to send signal notification: {e}")
-                
-            else:
-                logger.warning(f"Bot {subscription.bot.name} returned no action")
-                crud.log_bot_action(
-                    db, subscription_id, "NO_ACTION",
-                    "Bot analysis completed but no action was taken"
-                )
-
-        finally:
-            db.close()
-
+        except Exception as e:
+            logger.warning(f"Gmail SMTP failed: {e}")
+        
+        logger.error(f"All email services failed for trade notification to {user_email}")
+        
     except Exception as e:
-        logger.error(f"Error in run_bot_logic for subscription {subscription_id}: {e}")
-        logger.error(traceback.format_exc())
+        logger.error(f"Error sending trade notification: {e}")
+
+@app.task
+def send_sendgrid_notification(email: str, bot_name: str, action: str, details: dict):
+    """Send SendGrid notification"""
+    try:
+        from services.sendgrid_email_service import SendGridEmailService
         
-        # Try to log error to database
+        sendgrid_service = SendGridEmailService()
+        success = sendgrid_service.send_trade_notification(email, bot_name, action, details)
+        
+        if success:
+            logger.info(f"SendGrid notification sent to {email}")
+        else:
+            logger.error(f"Failed to send SendGrid notification to {email}")
+            
+    except Exception as e:
+        logger.error(f"Error sending SendGrid notification: {e}")
+
+@app.task
+def test_task():
+    """Test task for debugging"""
+    logger.info("Test task executed successfully")
+    return "Test task completed"
+
+@app.task
+def run_bot_logic(subscription_id: int):
+    """
+    Execute bot logic for a specific subscription.
+    Now uses prediction_cycle instead of timeframe for execution timing.
+    """
+    try:
+        db = next(get_db())
+        
+        # Get subscription details
+        subscription = crud.get_subscription(db, subscription_id)
+        if not subscription:
+            logger.error(f"Subscription {subscription_id} not found")
+            return
+        
+        if subscription.status != "ACTIVE":
+            logger.info(f"Subscription {subscription_id} is not active (status: {subscription.status})")
+            return
+        
+        # Check if it's time to run based on prediction_cycle
+        current_time = datetime.utcnow()
+        
+        # Get bot details
+        bot = crud.get_bot(db, subscription.bot_id)
+        if not bot:
+            logger.error(f"Bot {subscription.bot_id} not found")
+            return
+        
+        # Download bot code from S3
         try:
-            from core.database import SessionLocal
-            from core import crud
-            db = SessionLocal()
-            crud.log_bot_action(
-                db, subscription_id, "ERROR",
-                f"Bot execution failed: {str(e)}"
+            bot_code = s3_manager.download_bot_code(bot.id, bot.version)
+            logger.info(f"Downloaded bot code: {bot.s3_key} ({len(bot_code)} characters)")
+        except Exception as e:
+            logger.error(f"Failed to download bot code: {e}")
+            return
+        
+        # Load bot classes
+        try:
+            # Load Action class from bot_sdk
+            action_module = importlib.import_module('bots.bot_sdk.Action')
+            Action = getattr(action_module, 'Action')
+            logger.info("Loaded Action class from bot_sdk")
+            
+            # Load CustomBot base class from bot_sdk
+            custom_bot_module = importlib.import_module('bots.bot_sdk.CustomBot')
+            CustomBot = getattr(custom_bot_module, 'CustomBot')
+            logger.info("Loaded CustomBot base class from bot_sdk")
+            
+            logger.info("Successfully loaded base classes from bot_sdk")
+        except Exception as e:
+            logger.error(f"Failed to load bot SDK classes: {e}")
+            return
+        
+        # Create bot instance
+        try:
+            # Create a temporary module for the bot
+            bot_module = types.ModuleType(f"bot_{bot.id}")
+            exec(bot_code, bot_module.__dict__)
+            
+            # Find the bot class (should inherit from CustomBot)
+            bot_class = None
+            for attr_name in dir(bot_module):
+                attr = getattr(bot_module, attr_name)
+                if (inspect.isclass(attr) and 
+                    issubclass(attr, CustomBot) and 
+                    attr != CustomBot):
+                    bot_class = attr
+                    break
+            
+            if not bot_class:
+                logger.error("No valid bot class found in code")
+                return
+            
+            bot_config = {
+                'prediction_cycle': subscription.timeframe,
+                'prediction_cycle_configurable': True,
+                'max_data_points': 1000,
+                'required_warmup_periods': 50,
+                **(subscription.strategy_config or {}),
+                **(subscription.execution_config or {})
+            }
+            
+            bot_instance = bot_class(bot_config)
+            logger.info(f"Successfully initialized bot with new constructor: {bot_class.__name__} v{bot.version}")
+            
+            # Validate prediction cycle if configurable
+            if bot_instance.prediction_cycle_configurable:
+                if hasattr(bot_instance, 'validate_prediction_cycle'):
+                    if not bot_instance.validate_prediction_cycle(bot_instance.prediction_cycle):
+                        logger.error(f"Invalid prediction cycle: {bot_instance.prediction_cycle}")
+                        if hasattr(bot_instance, 'get_supported_prediction_cycles'):
+                            logger.info(f"Supported cycles: {bot_instance.get_supported_prediction_cycles()}")
+                        if hasattr(bot_instance, 'get_recommended_prediction_cycle'):
+                            logger.info(f"Recommended cycle: {bot_instance.get_recommended_prediction_cycle()}")
+                        return
+            else:
+                logger.info(f"Bot uses fixed prediction cycle: {bot_instance.prediction_cycle}")
+            
+        except Exception as e:
+            logger.error(f"Failed to create bot instance: {e}")
+            return
+        
+        # Check if it's time to execute prediction
+        if not bot_instance.should_execute_prediction(current_time):
+            logger.info(f"Bot {bot.id} prediction cycle not ready yet. Next execution in {bot_instance.prediction_cycle}")
+            return
+        
+        # Get exchange credentials
+        user = crud.get_user(db, subscription.user_id)
+        if not user:
+            logger.error(f"User {subscription.user_id} not found")
+            return
+        
+        exchange_creds = crud.get_exchange_credentials(db, user.id, subscription.exchange_type)
+        if not exchange_creds:
+            logger.error(f"No exchange credentials found for user {user.email} on {subscription.exchange_type}")
+            return
+        
+        logger.info(f"Found exchange credentials for {subscription.exchange_type} (testnet={subscription.is_testnet})")
+        
+        # Create exchange client
+        try:
+            exchange_factory = ExchangeFactory()
+            exchange_client = exchange_factory.create_exchange(
+                exchange_type=subscription.exchange_type,
+                api_key=exchange_creds.api_key,
+                api_secret=exchange_creds.api_secret,
+                testnet=subscription.is_testnet
             )
-            db.close()
-        except:
-            pass
+            logger.info(f"Creating exchange client for subscription {subscription_id} (testnet={subscription.is_testnet})")
+        except Exception as e:
+            logger.error(f"Failed to create exchange client: {e}")
+            return
+        
+        # Set exchange client in bot instance
+        bot_instance.exchange_client = exchange_client
+        
+        # Execute bot algorithm
+        try:
+            # Create market context
+            market_context = {
+                'symbol': subscription.trading_pair,
+                'timeframe': subscription.timeframe,
+                'current_price': exchange_client.get_current_price(subscription.trading_pair),
+                'balance': exchange_client.get_balance(),
+                'subscription_id': subscription_id
+            }
+            
+            # Execute bot algorithm
+            action_result = bot_instance.execute_algorithm(current_time, market_context)
+            
+            if action_result and bot_instance.validate_signal(action_result):
+                logger.info(f"Bot {bot.name} executed with action: {action_result['action']}, value: {action_result['amount']}, reason: {action_result['reason']}")
+                
+                # Execute trade action
+                trade_details = execute_trade_action(
+                    exchange_client=exchange_client,
+                    action=action_result,
+                    subscription=subscription,
+                    market_context=market_context
+                )
+                
+                # Update bot performance
+                bot_instance.update_performance(trade_details)
+                bot_instance.last_action = action_result
+                bot_instance.last_action_time = current_time
+                
+                # Send email notification
+                send_trade_notification(
+                    user_email=user.email,
+                    bot_name=bot.name,
+                    action=action_result,
+                    trade_details=trade_details,
+                    subscription=subscription
+                )
+                
+            else:
+                logger.info(f"Bot {bot.name} executed but no valid action generated")
+                
+        except Exception as e:
+            logger.error(f"Error executing bot algorithm: {e}")
+            # Send error notification
+            send_trade_notification(
+                user_email=user.email,
+                bot_name=bot.name,
+                action={'action': 'ERROR', 'reason': str(e)},
+                trade_details={'success': False, 'error': str(e)},
+                subscription=subscription
+            )
+        
+        # Update subscription last_run_at
+        crud.update_subscription_last_run(db, subscription_id, current_time)
+        
+        logger.info(f"Task run_bot_logic[{subscription_id}] completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in run_bot_logic: {e}")
+        logger.error(traceback.format_exc())
 
 @app.task
 def schedule_active_bots():
@@ -653,8 +681,8 @@ def send_email_notification(email: str, subject: str, body: str):
             sendgrid_service = SendGridEmailService()
             success = sendgrid_service.send_email(email, subject, body)
             if success:
-                    logger.info(f"Email sent via SendGrid to {email}")
-                    return
+                logger.info(f"Email sent via SendGrid to {email}")
+                return
         except Exception as e:
             logger.warning(f"SendGrid failed: {e}")
         
@@ -672,26 +700,3 @@ def send_email_notification(email: str, subject: str, body: str):
         
     except Exception as e:
         logger.error(f"Error sending email notification: {e}")
-
-@app.task
-def send_sendgrid_notification(email: str, bot_name: str, action: str, details: dict):
-    """Send SendGrid notification"""
-    try:
-        from services.sendgrid_email_service import SendGridEmailService
-        
-        sendgrid_service = SendGridEmailService()
-        success = sendgrid_service.send_trade_notification(email, bot_name, action, details)
-        
-        if success:
-            logger.info(f"SendGrid notification sent to {email}")
-        else:
-            logger.error(f"Failed to send SendGrid notification to {email}")
-            
-    except Exception as e:
-        logger.error(f"Error sending SendGrid notification: {e}")
-
-@app.task
-def test_task():
-    """Test task for debugging"""
-    logger.info("Test task executed successfully")
-    return "Test task completed"

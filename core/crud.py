@@ -1182,3 +1182,61 @@ def cleanup_old_bot_actions(cutoff_date: datetime) -> int:
         
     except Exception as e:
         return 0
+
+# Bot Draft CRUD operations
+def create_bot_draft(db: Session, user_id: int, name: str, description: str, bot_code: str, category_id: Optional[int] = None) -> models.BotDraft:
+    """Create a new bot draft"""
+    db_draft = models.BotDraft(
+        user_id=user_id,
+        name=name,
+        description=description,
+        bot_code=bot_code,
+        category_id=category_id
+    )
+    db.add(db_draft)
+    db.commit()
+    db.refresh(db_draft)
+    return db_draft
+
+def get_bot_draft(db: Session, draft_id: int, user_id: int) -> Optional[models.BotDraft]:
+    """Get a specific bot draft by ID and user ID"""
+    return db.query(models.BotDraft).filter(
+        models.BotDraft.id == draft_id,
+        models.BotDraft.user_id == user_id
+    ).first()
+
+def get_user_bot_drafts(db: Session, user_id: int, skip: int = 0, limit: int = 100) -> List[models.BotDraft]:
+    """Get all bot drafts for a user"""
+    return db.query(models.BotDraft).filter(
+        models.BotDraft.user_id == user_id
+    ).order_by(models.BotDraft.updated_at.desc()).offset(skip).limit(limit).all()
+
+def update_bot_draft(db: Session, draft_id: int, user_id: int, name: str = None, description: str = None, bot_code: str = None, category_id: int = None) -> Optional[models.BotDraft]:
+    """Update a bot draft"""
+    db_draft = get_bot_draft(db, draft_id, user_id)
+    if not db_draft:
+        return None
+    
+    if name is not None:
+        db_draft.name = name
+    if description is not None:
+        db_draft.description = description
+    if bot_code is not None:
+        db_draft.bot_code = bot_code
+    if category_id is not None:
+        db_draft.category_id = category_id
+    
+    db_draft.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(db_draft)
+    return db_draft
+
+def delete_bot_draft(db: Session, draft_id: int, user_id: int) -> bool:
+    """Delete a bot draft"""
+    db_draft = get_bot_draft(db, draft_id, user_id)
+    if not db_draft:
+        return False
+    
+    db.delete(db_draft)
+    db.commit()
+    return True

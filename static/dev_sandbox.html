@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot Developer Sandbox</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .CodeMirror {
+            height: 400px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .test-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .result-item {
+            padding: 8px 12px;
+            margin: 4px 0;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+        }
+        .result-success {
+            background: #d4edda;
+            border-left-color: #28a745;
+        }
+        .result-error {
+            background: #f8d7da;
+            border-left-color: #dc3545;
+        }
+        .result-warning {
+            background: #fff3cd;
+            border-left-color: #ffc107;
+        }
+        .loading {
+            display: none;
+        }
+        .config-editor {
+            height: 200px;
+        }
+        .saved-bots-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .bot-item {
+            cursor: pointer;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 5px 0;
+            transition: background-color 0.2s;
+        }
+        .bot-item:hover {
+            background-color: #f8f9fa;
+        }
+        .bot-item.selected {
+            background-color: #e3f2fd;
+            border-color: #2196f3;
+        }
+        .navbar-brand {
+            font-weight: bold;
+        }
+        .btn-group-sm .btn {
+            font-size: 0.875rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-robot"></i> Bot Developer Sandbox
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/static/index.html">
+                    <i class="fas fa-home"></i> Home
+                </a>
+                <a class="nav-link" href="https://github.com/TienDoan274/trade-bot-marketplace" target="_blank" rel="noopener">
+                    <i class="fab fa-github"></i> GitHub
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 bg-light p-3">
+                <h4><i class="fas fa-tools"></i> Development Tools</h4>
+                <hr>
+                
+                <!-- Template Bot -->
+                <div class="mb-3">
+                    <button class="btn btn-outline-primary btn-sm w-100" onclick="loadTemplate()">
+                        <i class="fas fa-file-code"></i> Load Template Bot
+                    </button>
+                </div>
+                
+                <!-- Save/Load Section -->
+                <div class="test-section">
+                    <h6><i class="fas fa-save"></i> Save & Load</h6>
+                    
+                    <div class="mb-3">
+                        <input type="text" class="form-control form-control-sm" id="botName" placeholder="Bot name" value="My Bot">
+                    </div>
+                    
+                    <div class="btn-group btn-group-sm w-100 mb-3">
+                        <button class="btn btn-success" onclick="saveBotCode()">
+                            <i class="fas fa-save"></i> Save
+                        </button>
+                        <button class="btn btn-info" onclick="loadSavedBots()">
+                            <i class="fas fa-folder-open"></i> Load
+                        </button>
+                    </div>
+                    
+                    <!-- Saved Bots List -->
+                    <div id="savedBotsList" class="saved-bots-list" style="display: none;">
+                        <h6>Saved Bots:</h6>
+                        <div id="savedBotsContainer"></div>
+                    </div>
+                </div>
+                
+                <!-- Test Controls -->
+                <div class="test-section">
+                    <h6><i class="fas fa-cog"></i> Test Configuration</h6>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Exchange</label>
+                        <select class="form-select form-select-sm" id="exchangeType">
+                            <option value="BINANCE">Binance</option>
+                            <option value="COINBASE">Coinbase</option>
+                            <option value="KRAKEN">Kraken</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Symbol</label>
+                        <input type="text" class="form-control form-control-sm" id="symbol" value="BTC/USDT">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Timeframe</label>
+                        <select class="form-select form-select-sm" id="timeframe">
+                            <option value="1m">1 minute</option>
+                            <option value="5m" selected>5 minutes</option>
+                            <option value="15m">15 minutes</option>
+                            <option value="1h">1 hour</option>
+                            <option value="4h">4 hours</option>
+                            <option value="1d">1 day</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="testRealData">
+                            <label class="form-check-label" for="testRealData">
+                                Test with real market data
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Performance Test Iterations</label>
+                        <input type="number" class="form-control form-control-sm" id="iterations" value="100" min="10" max="1000">
+                    </div>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div class="test-section">
+                    <h6><i class="fas fa-play"></i> Actions</h6>
+                    
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-primary btn-sm" onclick="testBotCode()">
+                            <i class="fas fa-vial"></i> Test Bot Code
+                        </button>
+                        
+                        <button class="btn btn-info btn-sm" onclick="validateInterface()">
+                            <i class="fas fa-check-circle"></i> Validate Interface
+                        </button>
+                        
+                        <button class="btn btn-warning btn-sm" onclick="performanceTest()">
+                            <i class="fas fa-tachometer-alt"></i> Performance Test
+                        </button>
+                        
+                        <button class="btn btn-success btn-sm" onclick="submitBot()">
+                            <i class="fas fa-upload"></i> Submit Bot
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Loading Indicator -->
+                <div class="loading" id="loading">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Processing...</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Content -->
+            <div class="col-md-9 p-3">
+                <div class="row">
+                    <!-- Code Editor -->
+                    <div class="col-md-8">
+                        <h5><i class="fas fa-code"></i> Bot Code</h5>
+                        <textarea id="codeEditor"></textarea>
+                    </div>
+                    
+                    <!-- Config Editor -->
+                    <div class="col-md-4">
+                        <h5><i class="fas fa-cogs"></i> Bot Configuration</h5>
+                        <textarea id="configEditor"></textarea>
+                    </div>
+                </div>
+                
+                <!-- Results -->
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <h5><i class="fas fa-chart-line"></i> Test Results</h5>
+                        <div id="results" class="test-section">
+                            <p class="text-muted">Run a test to see results here...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/closebrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/matchbrackets.min.js"></script>
+
+    <script>
+        // Initialize CodeMirror
+        let codeEditor = CodeMirror.fromTextArea(document.getElementById("codeEditor"), {
+            mode: "python",
+            theme: "monokai",
+            lineNumbers: true,
+            autoCloseBrackets: true,
+            matchBrackets: true,
+            indentUnit: 4,
+            tabSize: 4,
+            lineWrapping: true
+        });
+
+        let configEditor = CodeMirror.fromTextArea(document.getElementById("configEditor"), {
+            mode: "application/json",
+            theme: "monokai",
+            lineNumbers: true,
+            autoCloseBrackets: true,
+            matchBrackets: true,
+            lineWrapping: true
+        });
+
+        // Set default config
+        configEditor.setValue(JSON.stringify({
+            "short_period": 10,
+            "long_period": 20,
+            "rsi_period": 14,
+            "rsi_overbought": 70,
+            "rsi_oversold": 30
+        }, null, 2));
+
+        // API Base URL
+        const API_BASE = '/api/dev-sandbox';
+
+        // Load template bot
+        async function loadTemplate() {
+            try {
+                showLoading(true);
+                const response = await fetch(`${API_BASE}/template-bot`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    codeEditor.setValue(data.template_code);
+                    showResult('Template bot loaded successfully', 'success');
+                } else {
+                    showResult('Failed to load template: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showResult('Error loading template: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Save bot code
+        async function saveBotCode() {
+            try {
+                showLoading(true);
+                
+                const formData = new FormData();
+                formData.append('bot_code', codeEditor.getValue());
+                formData.append('bot_name', document.getElementById('botName').value);
+
+                const response = await fetch(`${API_BASE}/save-bot-code`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    showResult('Bot code saved successfully!', 'success');
+                    // Refresh saved bots list
+                    loadSavedBots();
+                } else {
+                    showResult('Failed to save bot: ' + data.message, 'error');
+                }
+                
+            } catch (error) {
+                showResult('Error saving bot: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Load saved bots list
+        async function loadSavedBots() {
+            try {
+                const response = await fetch(`${API_BASE}/list-saved-bots`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    displaySavedBots(data.bots);
+                } else {
+                    showResult('Failed to load saved bots: ' + data.message, 'error');
+                }
+                
+            } catch (error) {
+                showResult('Error loading saved bots: ' + error.message, 'error');
+            }
+        }
+
+        // Display saved bots
+        function displaySavedBots(bots) {
+            const container = document.getElementById('savedBotsContainer');
+            const listDiv = document.getElementById('savedBotsList');
+            
+            if (bots.length === 0) {
+                container.innerHTML = '<p class="text-muted">No saved bots found</p>';
+            } else {
+                let html = '';
+                bots.forEach(bot => {
+                    const date = new Date(bot.created_at).toLocaleString();
+                    html += `
+                        <div class="bot-item" onclick="loadBotCode('${bot.storage_key}')">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>${bot.name}</strong><br>
+                                    <small class="text-muted">${date}</small>
+                                </div>
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteBotCode('${bot.storage_key}', event)">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+                container.innerHTML = html;
+            }
+            
+            listDiv.style.display = 'block';
+        }
+
+        // Load specific bot code
+        async function loadBotCode(storageKey) {
+            try {
+                showLoading(true);
+                
+                const response = await fetch(`${API_BASE}/load-bot-code/${storageKey}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    codeEditor.setValue(data.bot_code);
+                    document.getElementById('botName').value = data.bot_name;
+                    showResult('Bot code loaded successfully!', 'success');
+                } else {
+                    showResult('Failed to load bot: ' + data.message, 'error');
+                }
+                
+            } catch (error) {
+                showResult('Error loading bot: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Delete bot code
+        async function deleteBotCode(storageKey, event) {
+            event.stopPropagation();
+            
+            if (!confirm('Are you sure you want to delete this bot?')) {
+                return;
+            }
+            
+            try {
+                showLoading(true);
+                
+                const response = await fetch(`${API_BASE}/delete-bot-code/${storageKey}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    showResult('Bot deleted successfully!', 'success');
+                    loadSavedBots(); // Refresh list
+                } else {
+                    showResult('Failed to delete bot: ' + data.message, 'error');
+                }
+                
+            } catch (error) {
+                showResult('Error deleting bot: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Test bot code
+        async function testBotCode() {
+            try {
+                showLoading(true);
+                
+                const formData = new FormData();
+                formData.append('bot_code', codeEditor.getValue());
+                formData.append('config', configEditor.getValue());
+                formData.append('exchange_type', document.getElementById('exchangeType').value);
+                formData.append('symbol', document.getElementById('symbol').value);
+                formData.append('timeframe', document.getElementById('timeframe').value);
+                formData.append('test_real_data', document.getElementById('testRealData').checked);
+
+                const response = await fetch(`${API_BASE}/test-bot-code`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                displayResults(data, 'Bot Code Test');
+                
+            } catch (error) {
+                showResult('Error testing bot code: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Validate interface
+        async function validateInterface() {
+            try {
+                showLoading(true);
+                
+                const formData = new FormData();
+                formData.append('bot_code', codeEditor.getValue());
+
+                const response = await fetch(`${API_BASE}/validate-bot-interface`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                displayResults(data, 'Interface Validation');
+                
+            } catch (error) {
+                showResult('Error validating interface: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Performance test
+        async function performanceTest() {
+            try {
+                showLoading(true);
+                
+                const formData = new FormData();
+                formData.append('bot_code', codeEditor.getValue());
+                formData.append('config', configEditor.getValue());
+                formData.append('iterations', document.getElementById('iterations').value);
+
+                const response = await fetch(`${API_BASE}/performance-test`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                displayResults(data, 'Performance Test');
+                
+            } catch (error) {
+                showResult('Error running performance test: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Submit bot
+        async function submitBot() {
+            try {
+                showLoading(true);
+                
+                const botName = prompt('Enter bot name:') || document.getElementById('botName').value || 'My Bot';
+                const description = prompt('Enter bot description:') || 'A trading bot';
+                const categoryId = prompt('Enter category ID:') || '1';
+                const pricePerMonth = prompt('Enter price per month:') || '0.0';
+                const isFree = prompt('Is bot free? (true/false):') || 'true';
+                
+                const formData = new FormData();
+                formData.append('name', botName);
+                formData.append('description', description);
+                formData.append('category_id', categoryId);
+                formData.append('price_per_month', pricePerMonth);
+                formData.append('is_free', isFree);
+                formData.append('bot_type', 'TECHNICAL');
+                formData.append('config_schema', '{}');
+                formData.append('default_config', configEditor.getValue());
+                
+                // Create a file from the code
+                const codeBlob = new Blob([codeEditor.getValue()], { type: 'text/plain' });
+                const file = new File([codeBlob], 'bot.py', { type: 'text/plain' });
+                formData.append('file', file);
+
+                const response = await fetch('/api/bots/with-code', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult('Bot submitted successfully! Bot ID: ' + data.id, 'success');
+                } else {
+                    showResult('Failed to submit bot: ' + data.detail, 'error');
+                }
+                
+            } catch (error) {
+                showResult('Error submitting bot: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Display results
+        function displayResults(data, testType) {
+            const resultsDiv = document.getElementById('results');
+            
+            let html = `<h6><i class="fas fa-chart-bar"></i> ${testType} Results</h6>`;
+            
+            if (data.success) {
+                html += `<div class="result-item result-success"><i class="fas fa-check"></i> ${data.message}</div>`;
+            } else {
+                html += `<div class="result-item result-error"><i class="fas fa-times"></i> ${data.message}</div>`;
+            }
+            
+            // Display results array
+            if (data.results) {
+                data.results.forEach(result => {
+                    const className = result.includes('✅') ? 'result-success' : 
+                                   result.includes('❌') ? 'result-error' : 'result-warning';
+                    const icon = result.includes('✅') ? 'fas fa-check' : 
+                               result.includes('❌') ? 'fas fa-times' : 'fas fa-exclamation-triangle';
+                    html += `<div class="result-item ${className}"><i class="${icon}"></i> ${result}</div>`;
+                });
+            }
+            
+            // Display validation results
+            if (data.validation_results) {
+                data.validation_results.forEach(result => {
+                    const className = result.includes('✅') ? 'result-success' : 
+                                   result.includes('❌') ? 'result-error' : 'result-warning';
+                    const icon = result.includes('✅') ? 'fas fa-check' : 
+                               result.includes('❌') ? 'fas fa-times' : 'fas fa-exclamation-triangle';
+                    html += `<div class="result-item ${className}"><i class="${icon}"></i> ${result}</div>`;
+                });
+            }
+            
+            // Display performance results
+            if (data.performance_results) {
+                data.performance_results.forEach(result => {
+                    const className = result.includes('✅') ? 'result-success' : 
+                                   result.includes('❌') ? 'result-error' : 'result-warning';
+                    const icon = result.includes('✅') ? 'fas fa-check' : 
+                               result.includes('❌') ? 'fas fa-times' : 'fas fa-exclamation-triangle';
+                    html += `<div class="result-item ${className}"><i class="${icon}"></i> ${result}</div>`;
+                });
+            }
+            
+            // Display metrics
+            if (data.metrics) {
+                html += `<div class="mt-3"><h6><i class="fas fa-tachometer-alt"></i> Performance Metrics</h6>`;
+                html += `<div class="row">`;
+                html += `<div class="col-md-3"><strong>Total Iterations:</strong> ${data.metrics.total_iterations}</div>`;
+                html += `<div class="col-md-3"><strong>Successful Signals:</strong> ${data.metrics.successful_signals}</div>`;
+                html += `<div class="col-md-3"><strong>Errors:</strong> ${data.metrics.errors}</div>`;
+                html += `<div class="col-md-3"><strong>Avg Time:</strong> ${data.metrics.avg_time_per_signal.toFixed(6)}s</div>`;
+                html += `</div></div>`;
+            }
+            
+            resultsDiv.innerHTML = html;
+        }
+
+        // Show single result
+        function showResult(message, type) {
+            const resultsDiv = document.getElementById('results');
+            const className = type === 'success' ? 'result-success' : 'result-error';
+            const icon = type === 'success' ? 'fas fa-check' : 'fas fa-times';
+            resultsDiv.innerHTML = `<div class="result-item ${className}"><i class="${icon}"></i> ${message}</div>`;
+        }
+
+        // Show/hide loading
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+
+        // Load template on page load
+        window.onload = function() {
+            loadTemplate();
+        };
+    </script>
+</body>
+</html> 

@@ -674,3 +674,32 @@ class SubscriptionWithPricing(SubscriptionResponse):
     
     class Config:
         from_attributes = True
+
+# Bot Draft schemas
+class BotDraftBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    bot_code: str
+    category_id: Optional[int] = None
+
+class BotDraftCreate(BotDraftBase):
+    pass
+
+class BotDraftUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    bot_code: Optional[str] = None
+    category_id: Optional[int] = None
+
+class BotDraft(BotDraftBase):
+    id: int
+    user_id: int
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        orm_mode = True
+
+class BotDraftList(BaseModel):
+    drafts: List[BotDraft]
+    total: int

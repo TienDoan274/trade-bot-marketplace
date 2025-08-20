@@ -1,0 +1,2132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot Developer Sandbox v2</title>
+    <link rel="icon" href="/static/favicon.ico">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .CodeMirror {
+            height: 400px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .test-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .result-item {
+            padding: 8px 12px;
+            margin: 4px 0;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+        }
+        .result-success {
+            background: #d4edda;
+            border-left-color: #28a745;
+        }
+        .result-error {
+            background: #f8d7da;
+            border-left-color: #dc3545;
+        }
+        .result-warning {
+            background: #fff3cd;
+            border-left-color: #ffc107;
+        }
+        .loading {
+            display: none;
+        }
+        .config-editor {
+            height: 200px;
+        }
+        .template-card {
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .template-card:hover {
+            transform: translateY(-2px);
+        }
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin: 20px 0;
+        }
+        .backtest-results {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .trade-item {
+            padding: 8px;
+            margin: 4px 0;
+            border-radius: 4px;
+            background: #f8f9fa;
+        }
+        .trade-buy {
+            border-left: 4px solid #28a745;
+        }
+        .trade-sell {
+            border-left: 4px solid #dc3545;
+        }
+        .navbar-brand {
+            font-weight: bold;
+        }
+        .btn-group-sm .btn {
+            font-size: 0.875rem;
+        }
+        .parameter-input {
+            margin-bottom: 10px;
+        }
+        .parameter-input label {
+            font-weight: 500;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/static/dev_sandbox_v2.html">
+                <i class="fas fa-robot"></i> Developer
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarsMain" aria-controls="navbarsMain" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarsMain">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link active" aria-current="page" href="/static/dev_sandbox_v2.html"><i class="fas fa-flask"></i> Dev Sandbox</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/static/drafts.html"><i class="fas fa-save"></i> Drafts</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/static/submit_bot.html"><i class="fas fa-upload"></i> Submit Bot</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="https://github.com/TienDoan274/trade-bot-marketplace" target="_blank" rel="noopener"><i class="fab fa-github"></i> GitHub</a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-user"></i> <span id="navUserEmail">Developer</span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                            <li><a class="dropdown-item" href="/static/dev_sandbox_v2.html">Dev Sandbox</a></li>
+                            <li><a class="dropdown-item" href="/static/drafts.html">Drafts</a></li>
+                            <li><a class="dropdown-item" href="/static/submit_bot.html">Submit Bot</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" onclick="logout()">Logout</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 bg-light p-3">
+                <h4><i class="fas fa-tools"></i> Development Tools</h4>
+                <hr>
+                
+                <!-- Template Bots -->
+                <div class="test-section">
+                    <h6><i class="fas fa-file-code"></i> Template Bots</h6>
+                    <div id="templateBotsList">
+                        <div class="template-card card mb-2" onclick="loadTemplateBot('rsi_bot.py')">
+                            <div class="card-body p-2">
+                                <h6 class="card-title mb-1">RSI Bot</h6>
+                                <small class="text-muted">RSI-based trading strategy</small>
+                            </div>
+                        </div>
+                        <div class="template-card card mb-2" onclick="loadTemplateBot('golden_cross_bot.py')">
+                            <div class="card-body p-2">
+                                <h6 class="card-title mb-1">Golden Cross Bot</h6>
+                                <small class="text-muted">SMA crossover strategy</small>
+                            </div>
+                        </div>
+                        <div class="template-card card mb-2" onclick="loadTemplateBot('bollinger_bands_bot.py')">
+                            <div class="card-body p-2">
+                                <h6 class="card-title mb-1">Bollinger Bands Bot</h6>
+                                <small class="text-muted">BB strategy with RSI</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Bot Configuration -->
+                <div class="test-section">
+                    <h6><i class="fas fa-cogs"></i> Bot Configuration</h6>
+                    <div id="configParameters">
+                        <!-- Dynamic config parameters will be loaded here -->
+                    </div>
+                </div>
+                
+                <!-- Test Settings -->
+                <div class="test-section">
+                    <h6><i class="fas fa-cog"></i> Test Settings</h6>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Exchange</label>
+                        <select class="form-select form-select-sm" id="exchangeType">
+                            <option value="BINANCE">Binance</option>
+                            <option value="COINBASE">Coinbase</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Symbol</label>
+                        <input type="text" class="form-control form-control-sm" id="symbol" value="BTC/USDT">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Timeframe</label>
+                        <select class="form-select form-select-sm" id="timeframe">
+                            <option value="1m">1 minute</option>
+                            <option value="5m" selected>5 minutes</option>
+                            <option value="15m">15 minutes</option>
+                            <option value="1h">1 hour</option>
+                            <option value="4h">4 hours</option>
+                            <option value="1d">1 day</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Initial Balance</label>
+                        <input type="number" class="form-control form-control-sm" id="initialBalance" value="10000" min="100" max="10000000">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Fee Rate (taker)</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" class="form-control" id="feeRate" value="0.001" min="0" max="0.01" step="0.0001">
+                            <span class="input-group-text">(e.g. 0.001 = 0.1%)</span>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Position Sizing</label>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <select class="form-select form-select-sm" id="sizingType">
+                                    <option value="FULL_BALANCE">Full Balance</option>
+                                    <option value="PERCENT_BALANCE" selected>Percent of Balance</option>
+                                    <option value="FIXED_QUOTE">Fixed Quote (USDT)</option>
+                                    <option value="FIXED_BASE">Fixed Base (BTC)</option>
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <input type="number" class="form-control form-control-sm" id="sizingValue" value="10" min="0" step="0.01">
+                            </div>
+                        </div>
+                        <small class="text-muted">If Percent is selected, value = percent (e.g. 10 = 10%).</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Backtest Date Range</label>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <input type="datetime-local" class="form-control form-control-sm" id="backtestStart">
+                            </div>
+                            <div class="col-6">
+                                <input type="datetime-local" class="form-control form-control-sm" id="backtestEnd">
+                            </div>
+                        </div>
+                        <small class="text-muted">If empty, defaults to last 30 days.</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Live Test Duration (minutes)</label>
+                        <input type="number" class="form-control form-control-sm" id="liveDuration" value="5" min="1" max="60">
+                    </div>
+                    
+                    <!-- Bot Control Settings -->
+                    <div class="mb-3">
+                        <h6><i class="fas fa-cogs"></i> Bot Control Settings</h6>
+                        
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="form-label">Data Fetch Timeframe</label>
+                                <select class="form-select form-select-sm" id="dataFetchTimeframe" onchange="validateTimeframes()">
+                                    <option value="1s">1 second</option>
+                                    <option value="1m">1 minute</option>
+                                    <option value="3m">3 minutes</option>
+                                    <option value="5m" selected>5 minutes</option>
+                                    <option value="15m">15 minutes</option>
+                                    <option value="30m">30 minutes</option>
+                                    <option value="1h">1 hour</option>
+                                    <option value="2h">2 hours</option>
+                                    <option value="4h">4 hours</option>
+                                    <option value="6h">6 hours</option>
+                                    <option value="8h">8 hours</option>
+                                    <option value="12h">12 hours</option>
+                                    <option value="1d">1 day</option>
+                                    <option value="3d">3 days</option>
+                                    <option value="1w">1 week</option>
+                                    <option value="1M">1 month</option>
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">Prediction Cycle</label>
+                                <select class="form-select form-select-sm" id="predictionCycle" onchange="validateTimeframes()">
+                                    <option value="1s">1 second</option>
+                                    <option value="1m">1 minute</option>
+                                    <option value="3m">3 minutes</option>
+                                    <option value="5m" selected>5 minutes</option>
+                                    <option value="15m">15 minutes</option>
+                                    <option value="30m">30 minutes</option>
+                                    <option value="1h">1 hour</option>
+                                    <option value="2h">2 hours</option>
+                                    <option value="4h">4 hours</option>
+                                    <option value="6h">6 hours</option>
+                                    <option value="8h">8 hours</option>
+                                    <option value="12h">12 hours</option>
+                                    <option value="1d">1 day</option>
+                                    <option value="3d">3 days</option>
+                                    <option value="1w">1 week</option>
+                                    <option value="1M">1 month</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="row g-2 mt-2">
+                            <div class="col-6">
+                                <label class="form-label">Data Fetch Limit</label>
+                                <input type="number" class="form-control form-control-sm" id="dataFetchLimit" value="100" min="50" max="1000">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">Prediction Cycle Configurable</label>
+                                <select class="form-select form-select-sm" id="predictionCycleConfigurable">
+                                    <option value="true" selected>Yes (User can change)</option>
+                                    <option value="false">No (Fixed by developer)</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div id="timeframeValidation" class="alert alert-warning mt-2" style="display: none;">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <strong>Warning:</strong> Prediction cycle should not be shorter than data fetch timeframe for optimal performance.
+                        </div>
+                        
+                        <small class="text-muted">
+                            <strong>Data Fetch:</strong> Timeframe for market data (internal processing)<br>
+                            <strong>Prediction Cycle:</strong> How often bot makes decisions (user-facing)<br>
+                            <strong>Note:</strong> Prediction cycle ≥ Data fetch timeframe recommended
+                        </small>
+                    </div>
+                </div>
+                
+                
+
+                <!-- Drafts Section -->
+                <div class="test-section">
+                    <h6><i class="fas fa-save"></i> Draft</h6>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-success btn-sm" onclick="saveDraft()">Save Draft</button>
+                    </div>
+                </div>
+
+                <!-- Submit (navigate to submit page) -->
+                <div class="test-section">
+                    <h6><i class="fas fa-upload"></i> Submit</h6>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-success btn-sm" onclick="submitFromEditor()">Go to Submit Page</button>
+                    </div>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div class="test-section">
+                    <h6><i class="fas fa-play"></i> Test</h6>
+                    
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-primary btn-sm" onclick="testBotCode()">
+                            <i class="fas fa-vial"></i> Quick Test
+                        </button>
+                        
+                        <button class="btn btn-info btn-sm" onclick="runBacktest()">
+                            <i class="fas fa-chart-line"></i> Backtest
+                        </button>
+                        
+                        <button id="liveBtn" class="btn btn-warning btn-sm" onclick="toggleLiveStream()">
+                            <i class="fas fa-broadcast-tower"></i> Live Test
+                        </button>
+                        
+                      
+                    </div>
+                </div>
+                
+                <!-- Loading Indicator -->
+                <div class="loading" id="loading">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Processing...</p>
+                    </div>
+                </div>
+                
+                <!-- Progress Display -->
+                <div class="progress-display" id="progressDisplay" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6><i class="fas fa-cogs"></i> Processing Progress</h6>
+                        </div>
+                        <div class="card-body">
+                            <div id="progressLog" class="progress-log" style="max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px;">
+                                <!-- Progress messages will be added here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Content -->
+            <div class="col-md-9 p-3">
+                <div class="row">
+                    <!-- Code Editor -->
+                    <div class="col-md-8">
+                        <h5><i class="fas fa-code"></i> Bot Code</h5>
+                        <textarea id="codeEditor"></textarea>
+                    </div>
+                    
+                    <!-- Config Editor -->
+                    <div class="col-md-4">
+                        <h5><i class="fas fa-cogs"></i> Bot Configuration</h5>
+                        <textarea id="configEditor"></textarea>
+                    </div>
+                </div>
+                
+                <!-- Results Tabs -->
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <ul class="nav nav-tabs" id="resultsTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="test-tab" data-bs-toggle="tab" data-bs-target="#test" type="button" role="tab">
+                                    <i class="fas fa-vial"></i> Test Results
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="backtest-tab" data-bs-toggle="tab" data-bs-target="#backtest" type="button" role="tab">
+                                    <i class="fas fa-chart-line"></i> Backtest
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="live-tab" data-bs-toggle="tab" data-bs-target="#live" type="button" role="tab">
+                                    <i class="fas fa-broadcast-tower"></i> Live Test
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="chart-tab" data-bs-toggle="tab" data-bs-target="#chart" type="button" role="tab">
+                                    <i class="fas fa-chart-area"></i> Chart
+                                </button>
+                            </li>
+                        </ul>
+                        
+                        <div class="tab-content" id="resultsTabContent">
+                            <!-- Test Results -->
+                            <div class="tab-pane fade show active" id="test" role="tabpanel">
+                                <div id="testResults" class="test-section">
+                                    <p class="text-muted">Run a test to see results here...</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Backtest Results -->
+                            <div class="tab-pane fade" id="backtest" role="tabpanel">
+                                <div id="backtestResults" class="test-section">
+                                    <p class="text-muted">Run a backtest to see results here...</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Live Test Results -->
+                            <div class="tab-pane fade" id="live" role="tabpanel">
+                                <div id="liveResults" class="test-section">
+                                    <p class="text-muted">Run a live test to see results here...</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Chart -->
+                            <div class="tab-pane fade" id="chart" role="tabpanel">
+                                <div class="test-section">
+                                    <div class="chart-container">
+                                        <canvas id="priceChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Debug Panel -->
+        <div class="row mt-3" id="debugPanel" style="display: none;">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h6><i class="fas fa-bug"></i> Debug Information</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Code with Line Numbers:</h6>
+                                <div id="codeWithLines" class="bg-dark text-light p-3 rounded" style="max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 0.9em;"></div>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Error Details:</h6>
+                                <div id="errorDetails" class="bg-light p-3 rounded"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/closebrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/matchbrackets.min.js"></script>
+
+    <script>
+        // Initialize CodeMirror
+        let codeEditor = CodeMirror.fromTextArea(document.getElementById("codeEditor"), {
+            mode: "python",
+            theme: "monokai",
+            lineNumbers: true,
+            autoCloseBrackets: true,
+            matchBrackets: true,
+            indentUnit: 4,
+            tabSize: 4,
+            lineWrapping: true
+        });
+
+        let configEditor = CodeMirror.fromTextArea(document.getElementById("configEditor"), {
+            mode: "application/json",
+            theme: "monokai",
+            lineNumbers: true,
+            autoCloseBrackets: true,
+            matchBrackets: true,
+            lineWrapping: true
+        });
+
+        // API Base URL
+        const API_BASE = '/api/dev-sandbox';
+        
+        // Chart instance
+        let priceChart = null;
+
+        // Load template bot
+        async function loadTemplateBot(botName) {
+            try {
+                console.log(`Loading template bot: ${botName}`);
+                showLoading(true);
+                
+                const response = await fetch(`${API_BASE}/template-bot/${botName}`, { headers: authHeaders() });
+                console.log(`Response status: ${response.status}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log('Response data:', data);
+                
+                if (data.success) {
+                    // Use data.content instead of data.template_code
+                    console.log(`Setting code editor with ${data.content ? data.content.length : 0} characters`);
+                    codeEditor.setValue(data.content);
+                    loadConfigParameters(data.content);
+                    showResult('Template bot loaded successfully', 'success', 'test');
+                } else {
+                    const errorMsg = data.message || 'Unknown error';
+                    console.error('Template load failed:', errorMsg);
+                    showResult('Failed to load template: ' + errorMsg, 'error', 'test');
+                }
+            } catch (error) {
+                console.error('Error loading template:', error);
+                showResult('Error loading template: ' + error.message, 'error', 'test');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Load config parameters from bot code
+        function loadConfigParameters(botCode) {
+            try {
+                // Safety check for botCode
+                if (!botCode || typeof botCode !== 'string') {
+                    console.warn('loadConfigParameters: botCode is not a valid string');
+                    return;
+                }
+                
+                // Extract config schema from bot code
+                const configMatch = botCode.match(/self\.config_schema\s*=\s*({[\s\S]*?})/);
+                if (configMatch) {
+                    const configStr = configMatch[1].replace(/'/g, '"');
+                    const configSchema = JSON.parse(configStr);
+                    
+                    // Merge defaults with current values (preserve user edits)
+                    const current = getCurrentConfig();
+                    const merged = {};
+                    Object.keys(configSchema).forEach(key => {
+                        if (current[key] !== undefined && current[key] !== null && current[key] !== '') {
+                            merged[key] = current[key];
+                        } else if (configSchema[key].default !== undefined) {
+                            merged[key] = configSchema[key].default;
+                        }
+                    });
+                    
+                    // Update editor and inputs
+                    configEditor.setValue(JSON.stringify(merged, null, 2));
+                    generateParameterInputs(configSchema, merged);
+                }
+            } catch (error) {
+                console.error('Error parsing config schema:', error);
+            }
+        }
+
+        // Generate parameter input fields
+        function generateParameterInputs(configSchema, values) {
+            try {
+                const container = document.getElementById('configParameters');
+                if (!container) {
+                    console.error('Config parameters container not found');
+                    return;
+                }
+                
+                container.innerHTML = '';
+                const current = values || getCurrentConfig();
+                
+                if (!configSchema || typeof configSchema !== 'object') {
+                    console.warn('Invalid config schema provided to generateParameterInputs');
+                    return;
+                }
+                
+                Object.keys(configSchema).forEach(key => {
+                    const param = configSchema[key];
+                    if (!param || typeof param !== 'object') {
+                        console.warn(`Invalid parameter definition for key: ${key}`);
+                        return;
+                    }
+                    
+                    const div = document.createElement('div');
+                    div.className = 'parameter-input mb-3';
+                    
+                    const val = current[key] !== undefined ? current[key] : (param.default !== undefined ? param.default : '');
+                    
+                    let inputHtml = '';
+                    const paramType = param.type || 'string';
+                    
+                    if (paramType === 'bool' || paramType === 'boolean') {
+                        inputHtml = `
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="param_${key}" ${val ? 'checked' : ''}>
+                                <label class="form-check-label" for="param_${key}">
+                                    <strong>${key}</strong>
+                                    ${param.description ? `<br><small class="text-muted">${param.description}</small>` : ''}
+                                </label>
+                            </div>
+                        `;
+                    } else {
+                        const typeAttr = (paramType === 'int' || paramType === 'float' || paramType === 'number') ? 'number' : 'text';
+                        const valueAttr = (typeAttr === 'number' && typeof val === 'string') ? Number(val) : val;
+                        
+                        inputHtml = `
+                            <label class="form-label"><strong>${key}</strong></label>
+                            <input type="${typeAttr}" 
+                                   class="form-control form-control-sm" 
+                                   id="param_${key}" 
+                                   value="${valueAttr !== undefined && valueAttr !== null ? valueAttr : ''}"
+                                   ${param.min !== undefined ? `min="${param.min}"` : ''}
+                                   ${param.max !== undefined ? `max="${param.max}"` : ''}
+                                   ${param.required ? 'required' : ''}>
+                            ${param.description ? `<small class="text-muted">${param.description}</small>` : ''}
+                        `;
+                    }
+                    
+                    div.innerHTML = inputHtml;
+                    container.appendChild(div);
+                });
+                
+                console.log(`Generated ${Object.keys(configSchema).length} parameter inputs`);
+                
+            } catch (error) {
+                console.error('Error generating parameter inputs:', error);
+                const container = document.getElementById('configParameters');
+                if (container) {
+                    container.innerHTML = `
+                        <div class="alert alert-danger">
+                            Error generating parameter inputs: ${error.message}
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        // Get current config from UI
+        function getCurrentConfig() {
+            const config = {};
+            
+            // Get dynamic config from config editor
+            try {
+                const configText = configEditor.getValue();
+                if (configText && configText.trim()) {
+                    const dynamicConfig = JSON.parse(configText);
+                    Object.assign(config, dynamicConfig);
+                }
+            } catch (e) {
+                console.warn('Error parsing config:', e);
+            }
+            
+            // Add bot control settings
+            config.prediction_cycle = document.getElementById('predictionCycle').value;
+            config.data_fetch_timeframe = document.getElementById('dataFetchTimeframe').value;
+            config.data_fetch_limit = parseInt(document.getElementById('dataFetchLimit').value);
+            config.prediction_cycle_configurable = document.getElementById('predictionCycleConfigurable').value === 'true';
+            
+            return config;
+        }
+        
+        // Get bot control settings for API calls
+        function getBotControlSettings() {
+            return {
+                prediction_cycle: document.getElementById('predictionCycle').value,
+                data_fetch_timeframe: document.getElementById('dataFetchTimeframe').value,
+                data_fetch_limit: parseInt(document.getElementById('dataFetchLimit').value),
+                prediction_cycle_configurable: document.getElementById('predictionCycleConfigurable').value === 'true'
+            };
+        }
+
+        // Test bot code
+        async function testBotCode() {
+            try {
+                showLoading(true);
+                
+                const formData = new FormData();
+                formData.append('bot_code', codeEditor.getValue());
+                formData.append('config', JSON.stringify(getCurrentConfig()));
+                formData.append('exchange_type', document.getElementById('exchangeType').value);
+                formData.append('symbol', document.getElementById('symbol').value);
+                formData.append('timeframe', document.getElementById('timeframe').value);
+                formData.append('test_real_data', true);
+
+                const response = await fetch(`${API_BASE}/test-bot-code`, {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: formData
+                });
+
+                const data = await response.json();
+                displayResults('test', data);
+
+                // If backend returns a config schema, render form dynamically
+                if (data.config_schema && typeof data.config_schema === 'object') {
+                    window.__LATEST_CONFIG_SCHEMA__ = data.config_schema;
+                    // Preserve current values before re-render
+                    const current = getCurrentConfig();
+                    const merged = {};
+                    Object.keys(data.config_schema).forEach(key => {
+                        const defVal = data.config_schema[key].default;
+                        if (current[key] !== undefined && current[key] !== null && current[key] !== '') {
+                            merged[key] = current[key];
+                        } else if (defVal !== undefined) {
+                            merged[key] = defVal;
+                        }
+                    });
+                    // Update editor and UI
+                    try {
+                        if (Object.keys(merged).length > 0) {
+                            configEditor.setValue(JSON.stringify(merged, null, 2));
+                        }
+                    } catch (e) { /* ignore */ }
+                    const container = document.getElementById('configParameters');
+                    if (container) container.innerHTML = '';
+                    generateParameterInputs(data.config_schema, merged);
+                }
+                
+            } catch (error) {
+                showResult('Error testing bot code: ' + error.message, 'error', 'test');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Progress display functions
+        function showProgress() {
+            document.getElementById('progressDisplay').style.display = 'block';
+            document.getElementById('progressLog').innerHTML = '';
+        }
+        
+        function hideProgress() {
+            document.getElementById('progressDisplay').style.display = 'none';
+        }
+        
+        function addProgressLog(message) {
+            const logDiv = document.getElementById('progressLog');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `<span class="text-muted">[${timestamp}]</span> ${message}`;
+            logDiv.appendChild(logEntry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        function simulateProgressUpdates() {
+            // Simulate progress updates during backtest
+            const messages = [
+                'Starting backtest...',
+                'Loading bot code...',
+                'Creating exchange client...',
+                'Fetching historical data...',
+                'Processing market data...',
+                'Running trading simulation...',
+                'Calculating results...'
+            ];
+            
+            let index = 0;
+            const interval = setInterval(() => {
+                if (index < messages.length) {
+                    addProgressLog(messages[index]);
+                    index++;
+                } else {
+                    clearInterval(interval);
+                }
+            }, 1000);
+        }
+
+        // Run backtest
+        async function runBacktest() {
+            try {
+                showLoading(true);
+                showProgress();
+                addProgressLog('Initializing backtest...');
+                
+                // Date range: use UI if provided, else last 30 days
+                const startInput = document.getElementById('backtestStart').value;
+                const endInput = document.getElementById('backtestEnd').value;
+                let startDate, endDate;
+                if (startInput && endInput) {
+                    startDate = new Date(startInput);
+                    endDate = new Date(endInput);
+                } else {
+                    endDate = new Date();
+                    startDate = new Date();
+                    startDate.setDate(startDate.getDate() - 30);
+                }
+                
+                addProgressLog(`Date range: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`);
+                
+                const formData = new FormData();
+                formData.append('bot_code', codeEditor.getValue());
+                formData.append('config', JSON.stringify(getCurrentConfig()));
+                formData.append('exchange_type', document.getElementById('exchangeType').value);
+                formData.append('symbol', document.getElementById('symbol').value);
+                formData.append('timeframe', document.getElementById('timeframe').value);
+                formData.append('start_date', startDate.toISOString());
+                formData.append('end_date', endDate.toISOString());
+                formData.append('initial_balance', document.getElementById('initialBalance').value);
+                formData.append('fee_rate', document.getElementById('feeRate').value);
+                formData.append('trade_amount_type', document.getElementById('sizingType').value);
+                formData.append('trade_amount_value', document.getElementById('sizingValue').value);
+                
+                // Add bot control settings
+                const botControls = getBotControlSettings();
+                formData.append('prediction_cycle', botControls.prediction_cycle);
+                formData.append('data_fetch_timeframe', botControls.data_fetch_timeframe);
+                formData.append('data_fetch_limit', botControls.data_fetch_limit);
+                formData.append('prediction_cycle_configurable', botControls.prediction_cycle_configurable);
+
+                addProgressLog(`Prediction cycle: ${botControls.prediction_cycle}, Data fetch: ${botControls.data_fetch_timeframe} (${botControls.data_fetch_limit} candles)`);
+                addProgressLog('Sending backtest request...');
+                
+                const response = await fetch(`${API_BASE}/backtest`, {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: formData
+                });
+
+                addProgressLog('Processing response...');
+                const data = await response.json();
+                addProgressLog('Backtest completed!');
+                
+                displayBacktestResults(data);
+                
+            } catch (error) {
+                addProgressLog(`Error: ${error.message}`);
+                showResult('Error running backtest: ' + error.message, 'error', 'backtest');
+            } finally {
+                showLoading(false);
+                hideProgress();
+            }
+        }
+
+        // Run live test
+        async function runLiveTest() {
+            try {
+                showLoading(true);
+                
+                const formData = new FormData();
+                formData.append('bot_code', codeEditor.getValue());
+                formData.append('config', JSON.stringify(getCurrentConfig()));
+                formData.append('exchange_type', document.getElementById('exchangeType').value);
+                formData.append('symbol', document.getElementById('symbol').value);
+                formData.append('timeframe', document.getElementById('timeframe').value);
+                formData.append('duration_minutes', document.getElementById('liveDuration').value);
+                formData.append('initial_balance', document.getElementById('initialBalance').value);
+                formData.append('fee_rate', document.getElementById('feeRate').value);
+                formData.append('trade_amount_type', document.getElementById('sizingType').value);
+                formData.append('trade_amount_value', document.getElementById('sizingValue').value);
+
+                const response = await fetch(`${API_BASE}/live-test`, {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: formData
+                });
+
+                const data = await response.json();
+                displayLiveResults(data);
+                
+            } catch (error) {
+                showResult('Error running live test: ' + error.message, 'error', 'live');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Submit bot
+        async function submitBot() {
+            try {
+                showLoading(true);
+                
+                const botName = prompt('Enter bot name:') || 'My Bot';
+                const description = prompt('Enter bot description:') || 'A trading bot';
+                const categoryId = prompt('Enter category ID:') || '1';
+                const pricePerMonth = prompt('Enter price per month:') || '0.0';
+                const isFree = prompt('Is bot free? (true/false):') || 'true';
+                
+                const formData = new FormData();
+                formData.append('name', botName);
+                formData.append('description', description);
+                formData.append('category_id', categoryId);
+                formData.append('price_per_month', pricePerMonth);
+                formData.append('is_free', isFree);
+                formData.append('bot_type', 'TECHNICAL');
+                formData.append('config_schema', '{}');
+                formData.append('default_config', JSON.stringify(getCurrentConfig()));
+                
+                // Create a file from the code
+                const codeBlob = new Blob([codeEditor.getValue()], { type: 'text/plain' });
+                const file = new File([codeBlob], 'bot.py', { type: 'text/plain' });
+                formData.append('file', file);
+
+                const response = await fetch('/api/bots/with-code', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult('Bot submitted successfully! Bot ID: ' + data.id, 'success', 'test');
+                } else {
+                    showResult('Failed to submit bot: ' + data.detail, 'error', 'test');
+                }
+                
+            } catch (error) {
+                showResult('Error submitting bot: ' + error.message, 'error', 'test');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Display test results
+        function displayResults(tabName, data) {
+            const resultContainer = document.getElementById(`${tabName}Results`);
+            if (!resultContainer) {
+                console.error(`Result container not found for tab: ${tabName}`);
+                return;
+            }
+            
+            if (data.success) {
+                resultContainer.innerHTML = `
+                    <div class="alert alert-success">
+                        <h5>✅ ${data.message}</h5>
+                        ${data.bot_class_name ? `<p><strong>Bot Class:</strong> ${data.bot_class_name}</p>` : ''}
+                        ${data.config_schema ? `<p><strong>Configuration Schema:</strong> <pre>${JSON.stringify(data.config_schema, null, 2)}</pre></p>` : ''}
+                        ${data.test_result ? `<p><strong>Test Result:</strong> ${data.test_result}</p>` : ''}
+                        ${data.prediction_cycle_info ? `
+                            <p><strong>Prediction Cycle Info:</strong></p>
+                            <ul>
+                                <li>Current Cycle: ${data.prediction_cycle_info.current_cycle}</li>
+                                <li>Configurable: ${data.prediction_cycle_info.configurable ? 'Yes' : 'No'}</li>
+                                <li>Supported Cycles: ${data.prediction_cycle_info.supported_cycles.join(', ') || 'None'}</li>
+                                <li>Recommended: ${data.prediction_cycle_info.recommended_cycle}</li>
+                            </ul>
+                        ` : ''}
+                        ${data.details ? `
+                            <details>
+                                <summary>Additional Details</summary>
+                                <p><strong>Methods Found:</strong> ${data.details.methods_found ? data.details.methods_found.join(', ') : 'None'}</p>
+                                <p><strong>Inheritance:</strong> ${data.details.inheritance ? data.details.inheritance.join(' → ') : 'None'}</p>
+                                <p><strong>Module Info:</strong> ${data.details.module_info || 'N/A'}</p>
+                            </details>
+                        ` : ''}
+                    </div>
+                `;
+                
+                // Update configuration form if config schema is available
+                if (data.config_schema && Object.keys(data.config_schema).length > 0) {
+                    updateConfigurationForm(data.config_schema);
+                } else if (data.success) {
+                    // If no config schema but test was successful, show a message
+                    console.log('No configuration schema available, using default');
+                    updateConfigurationForm({});
+                }
+            } else {
+                // Enhanced error display with detailed information
+                let errorHtml = `
+                    <div class="alert alert-danger">
+                        <h5>❌ ${data.message}</h5>
+                        <p><strong>Error Type:</strong> ${data.details?.error_type || 'Unknown'}</p>
+                        <p><strong>Error Message:</strong> ${data.details?.error_message || data.error || 'Unknown error'}</p>
+                        <button class="btn btn-sm btn-outline-secondary mt-2" onclick="showDebugPanel(codeEditor.getValue(), ${JSON.stringify(data.details || {})})">
+                            <i class="fas fa-bug"></i> Show Debug Panel
+                        </button>
+                `;
+                
+                // Display syntax error details
+                if (data.details?.line_info) {
+                    errorHtml += `
+                        <div class="mt-3">
+                            <h6>📍 Error Location:</h6>
+                            <div class="bg-dark text-light p-3 rounded">
+                                <pre class="mb-0">${data.details.line_info}</pre>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Display line number and context for syntax errors
+                if (data.details?.line_number) {
+                    errorHtml += `
+                        <div class="mt-3">
+                            <h6>📍 Line ${data.details.line_number}:</h6>
+                            <div class="bg-dark text-light p-3 rounded">
+                                <pre class="mb-0">${data.details.error_line || 'Unknown line'}</pre>
+                                ${data.details.indicator ? `<div class="text-warning">${data.details.indicator}</div>` : ''}
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Display context lines for syntax errors
+                if (data.details?.context) {
+                    errorHtml += `
+                        <div class="mt-3">
+                            <h6>📋 Code Context:</h6>
+                            <div class="bg-dark text-light p-3 rounded">
+                                <pre class="mb-0">${data.details.context}</pre>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Display suggestions
+                if (data.details?.suggestion) {
+                    errorHtml += `
+                        <div class="mt-3">
+                            <h6>💡 Suggestion:</h6>
+                            <div class="alert alert-info">
+                                ${data.details.suggestion}
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Display error analysis if available
+                if (data.details?.error_analysis) {
+                    const analysis = data.details.error_analysis;
+                    
+                    if (analysis.common_causes && analysis.common_causes.length > 0) {
+                        errorHtml += `
+                            <div class="mt-3">
+                                <h6>🔍 Common Causes:</h6>
+                                <div class="alert alert-warning">
+                                    <ul class="mb-0">
+                                        ${analysis.common_causes.map(cause => `<li>${cause}</li>`).join('')}
+                                    </ul>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    
+                    if (analysis.debugging_tips && analysis.debugging_tips.length > 0) {
+                        errorHtml += `
+                            <div class="mt-3">
+                                <h6>🛠️ Debugging Tips:</h6>
+                                <div class="alert alert-secondary">
+                                    <ul class="mb-0">
+                                        ${analysis.debugging_tips.map(tip => `<li>${tip}</li>`).join('')}
+                                    </ul>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+                
+                // Display missing methods
+                if (data.details?.missing_methods) {
+                    errorHtml += `
+                        <div class="mt-3">
+                            <h6>🔧 Missing Methods:</h6>
+                            <div class="alert alert-warning">
+                                <p>The following required methods are missing:</p>
+                                <ul>
+                                    ${data.details.missing_methods.map(method => `<li><code>${method}</code></li>`).join('')}
+                                </ul>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Display available classes if no valid bot class found
+                if (data.details?.available_classes) {
+                    errorHtml += `
+                        <div class="mt-3">
+                            <h6>📦 Available Classes:</h6>
+                            <div class="alert alert-info">
+                                <p>Found these classes in your code:</p>
+                                <ul>
+                                    ${data.details.available_classes.map(cls => `<li><code>${cls}</code></li>`).join('')}
+                                </ul>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Display full traceback for debugging (collapsible)
+                if (data.details?.full_traceback) {
+                    errorHtml += `
+                        <div class="mt-3">
+                            <details>
+                                <summary>🐛 Full Traceback (Click to expand)</summary>
+                                <div class="bg-dark text-light p-3 rounded mt-2">
+                                    <pre class="mb-0" style="white-space: pre-wrap; font-size: 0.9em;">${data.details.full_traceback}</pre>
+                                </div>
+                            </details>
+                        </div>
+                    `;
+                }
+                
+                errorHtml += `</div>`;
+                resultContainer.innerHTML = errorHtml;
+            }
+        }
+
+        // Display backtest results
+        function displayBacktestResults(data) {
+            const resultsDiv = document.getElementById('backtestResults');
+            
+            console.log('Backtest response:', data); // Debug log
+            
+            if (data.success) {
+                // Backend returns data directly, not wrapped in backtest_results
+                const results = data;
+                
+                let html = `
+                    <h6><i class="fas fa-chart-line"></i> Backtest Results</h6>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="card"><div class="card-body text-center">
+                                <h5 class="card-title">Initial Balance</h5>
+                                <p class="card-text">$${Number(results.initial_balance).toLocaleString()}</p>
+                            </div></div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card"><div class="card-body text-center">
+                                <h5 class="card-title">Final Balance</h5>
+                                <p class="card-text">$${Number(results.final_balance).toLocaleString()}</p>
+                            </div></div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card"><div class="card-body text-center">
+                                <h5 class="card-title">Total Return</h5>
+                                <p class="card-text ${results.total_return >= 0 ? 'text-success' : 'text-danger'}">${results.total_return >= 0 ? '+' : ''}${Number(results.total_return).toFixed(2)}%</p>
+                            </div></div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card"><div class="card-body text-center">
+                                <h5 class="card-title">Total Trades</h5>
+                                <p class="card-text">${results.total_trades}</p>
+                            </div></div>
+                        </div>
+                    </div>
+                    <div class="mt-2"><small class="text-muted">Fee rate: ${Number(results.fee_rate).toFixed(4)} | Sizing: ${results.sizing?.type || ''} ${results.sizing?.value || ''}</small></div>
+                    <h6 class="mt-3">Trade History</h6>
+                    <div class="backtest-results">
+                `;
+                
+                if (results.trades && results.trades.length > 0) {
+                    results.trades.forEach(trade => {
+                        const tradeClass = trade.action === 'BUY' ? 'trade-buy' : 'trade-sell';
+                        const icon = trade.action === 'BUY' ? 'fas fa-arrow-up' : 'fas fa-arrow-down';
+                        const color = trade.action === 'BUY' ? 'text-success' : 'text-danger';
+                        const posPct = trade.position_size_pct !== undefined ? Number(trade.position_size_pct).toFixed(2) + '%' : '';
+                        html += `
+                            <div class="trade-item ${tradeClass}">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <i class="${icon} ${color}"></i>
+                                        <strong>${trade.action}</strong>
+                                        <small class="text-muted">${new Date(trade.timestamp).toLocaleString()}</small>
+                                    </div>
+                                    <div class="text-end">
+                                        <div><strong>Price:</strong> $${Number(trade.price).toFixed(2)}</div>
+                                        <div><strong>Quote:</strong> ${Number(trade.quote_amount).toFixed(2)} | <strong>Base:</strong> ${Number(trade.base_amount).toFixed(6)}</div>
+                                        <div><strong>Fee:</strong> ${Number(trade.fee_quote).toFixed(4)} (rate ${Number(trade.fee_rate).toFixed(4)})</div>
+                                        <div><strong>Position %:</strong> ${posPct}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                } else {
+                    html += '<p class="text-muted">No trades executed</p>';
+                }
+                
+                html += '</div>';
+                
+                resultsDiv.innerHTML = html;
+                if (results.signals) {
+                    updateChart(results.signals);
+                }
+                
+            } else {
+                resultsDiv.innerHTML = `
+                    <div class="result-item result-error">
+                        <i class="fas fa-times"></i> ${data.message || 'Backtest failed'}
+                    </div>
+                `;
+            }
+            const tab = new bootstrap.Tab(document.getElementById('backtest-tab'));
+            tab.show();
+        }
+
+        // Display live test results
+        function displayLiveResults(data) {
+            const resultsDiv = document.getElementById('liveResults');
+            
+            if (data.success && data.live_results) {
+                const results = data.live_results;
+                
+                let html = `
+                    <h6><i class="fas fa-broadcast-tower"></i> Live Test Results</h6>
+                    <div class="row">
+                        <div class="col-md-6"><div class="card"><div class="card-body text-center"><h5 class="card-title">Duration</h5><p class="card-text">${results.duration_minutes} minutes</p></div></div></div>
+                        <div class="col-md-6"><div class="card"><div class="card-body text-center"><h5 class="card-title">Total Signals</h5><p class="card-text">${results.total_signals}</p></div></div></div>
+                    </div>
+                    <div class="mt-2"><small class="text-muted">Fee rate: ${Number(results.fee_rate).toFixed(4)} | Sizing: ${results.sizing?.type || ''} ${results.sizing?.value || ''}</small></div>
+                    <h6 class="mt-3">Executed Trades</h6>
+                    <div class="backtest-results">
+                `;
+                if (results.trades && results.trades.length > 0) {
+                    results.trades.forEach(trade => {
+                        const tradeClass = trade.action === 'BUY' ? 'trade-buy' : 'trade-sell';
+                        const icon = trade.action === 'BUY' ? 'fas fa-arrow-up' : 'fas fa-arrow-down';
+                        const color = trade.action === 'BUY' ? 'text-success' : 'text-danger';
+                        const posPct = trade.position_size_pct !== undefined ? Number(trade.position_size_pct).toFixed(2) + '%' : '';
+                        html += `
+                            <div class="trade-item ${tradeClass}">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <i class="${icon} ${color}"></i>
+                                        <strong>${trade.action}</strong>
+                                        <small class="text-muted">${new Date(trade.timestamp).toLocaleString()}</small>
+                                    </div>
+                                    <div class="text-end">
+                                        <div><strong>Price:</strong> $${Number(trade.price).toFixed(2)}</div>
+                                        <div><strong>Quote:</strong> ${Number(trade.quote_amount).toFixed(2)} | <strong>Base:</strong> ${Number(trade.base_amount).toFixed(6)}</div>
+                                        <div><strong>Fee:</strong> ${Number(trade.fee_quote).toFixed(4)} (rate ${Number(trade.fee_rate).toFixed(4)})</div>
+                                        <div><strong>Position %:</strong> ${posPct}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                } else {
+                    html += '<p class="text-muted">No trades executed</p>';
+                }
+                html += '</div>';
+                
+                // Signals section
+                html += '<h6 class="mt-3">Live Signals</h6><div class="backtest-results">';
+                if (results.signals && results.signals.length > 0) {
+                    results.signals.forEach(signal => {
+                        const action = (signal.signal && signal.signal.action) || '-';
+                        const signalClass = action === 'BUY' ? 'trade-buy' : action === 'SELL' ? 'trade-sell' : 'trade-item';
+                        const icon = action === 'BUY' ? 'fas fa-arrow-up' : action === 'SELL' ? 'fas fa-arrow-down' : 'fas fa-minus';
+                        const color = action === 'BUY' ? 'text-success' : action === 'SELL' ? 'text-danger' : 'text-muted';
+                        html += `
+                            <div class="trade-item ${signalClass}">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <i class="${icon} ${color}"></i>
+                                        <strong>${action}</strong>
+                                        <small class="text-muted">${new Date(signal.timestamp).toLocaleString()}</small>
+                                    </div>
+                                    <div class="text-end">
+                                        <div><strong>Price:</strong> $${Number(signal.price).toFixed(2)}</div>
+                                        <div><small class="text-muted">${(signal.signal && signal.signal.reason) || ''}</small></div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                } else {
+                    html += '<p class="text-muted">No signals generated</p>';
+                }
+                html += '</div>';
+                
+                resultsDiv.innerHTML = html;
+                updateChart(results.signals);
+            } else {
+                resultsDiv.innerHTML = `
+                    <div class="result-item result-error">
+                        <i class="fas fa-times"></i> ${data.message || 'Live test failed'}
+                    </div>
+                `;
+            }
+            const tab = new bootstrap.Tab(document.getElementById('live-tab'));
+            tab.show();
+        }
+
+        // Update chart with signal data
+        function updateChart(signals) {
+            if (!signals || signals.length === 0) return;
+            
+            const ctx = document.getElementById('priceChart').getContext('2d');
+            
+            // Prepare data
+            const labels = signals.map(s => new Date(s.timestamp).toLocaleTimeString());
+            const prices = signals.map(s => s.price);
+            const actions = signals.map(s => s.signal.action);
+            
+            // Create datasets
+            const datasets = [{
+                label: 'Price',
+                data: prices,
+                borderColor: 'rgb(75, 192, 192)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                tension: 0.1
+            }];
+            
+            // Add buy/sell points
+            const buyPoints = {
+                label: 'Buy Signals',
+                data: prices.map((price, i) => actions[i] === 'BUY' ? price : null),
+                pointBackgroundColor: 'green',
+                pointBorderColor: 'green',
+                pointRadius: 6,
+                showLine: false
+            };
+            
+            const sellPoints = {
+                label: 'Sell Signals',
+                data: prices.map((price, i) => actions[i] === 'SELL' ? price : null),
+                pointBackgroundColor: 'red',
+                pointBorderColor: 'red',
+                pointRadius: 6,
+                showLine: false
+            };
+            
+            datasets.push(buyPoints, sellPoints);
+            
+            // Destroy existing chart
+            if (priceChart) {
+                priceChart.destroy();
+            }
+            
+            // Create new chart
+            priceChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: false
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Price Chart with Trading Signals'
+                        }
+                    }
+                }
+            });
+            
+            // Switch to chart tab
+            const tab = new bootstrap.Tab(document.getElementById('chart-tab'));
+            tab.show();
+        }
+
+        // Show single result
+        function showResult(message, type, tabName = 'test') {
+            const resultsDiv = document.getElementById(tabName + 'Results');
+            const className = type === 'success' ? 'result-success' : 'result-error';
+            const icon = type === 'success' ? 'fas fa-check' : 'fas fa-times';
+            resultsDiv.innerHTML = `<div class="result-item ${className}"><i class="${icon}"></i> ${message}</div>`;
+        }
+
+        // Show/hide loading
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+
+        // Load default template on page load
+        window.onload = function() {
+            loadTemplateBot('rsi_bot.py');
+        };
+
+        // --- Auth and Drafts Logic ---
+        let authToken = '';
+        function setToken(t) {
+            authToken = t || '';
+            if (authToken) {
+                localStorage.setItem('access_token', authToken);
+                document.getElementById('navUserEmail').innerText = localStorage.getItem('email') || 'Developer';
+            } else {
+                document.getElementById('navUserEmail').innerText = 'Developer';
+            }
+        }
+        function authHeaders() {
+            return authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
+        }
+        // Gate page: require token before using sandbox
+        window.addEventListener('load', async () => {
+            const t = localStorage.getItem('access_token');
+            if (!t) {
+                const next = encodeURIComponent(window.location.pathname + window.location.search);
+                window.location.href = `/static/login.html?next=${next}`;
+                return;
+            }
+            setToken(t);
+            // If ?draft= is provided, auto-load that draft
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const draftKey = params.get('draft');
+                if (draftKey) {
+                    await loadDraft(draftKey); 
+                }
+            } catch (e) { /* ignore */ }
+        });
+        async function showLoginModal() {
+            const email = prompt('Email:');
+            const password = prompt('Password:');
+            if (!email || !password) return;
+            const form = new URLSearchParams();
+            form.append('username', email);
+            form.append('password', password);
+            const resp = await fetch('/auth/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: form });
+            const data = await resp.json();
+            if (resp.ok) {
+                setToken(data.access_token);
+                // await loadCategories(); // This line is removed as per the simplified UI
+                // refreshDrafts(); // This line is removed as per the simplified UI
+            } else {
+                alert('Login failed: ' + (data.detail || 'Unknown error'));
+            }
+        }
+        async function showRegisterModal() {
+            const email = prompt('Email:');
+            const password = prompt('Password:');
+            const devName = prompt('Developer name (optional):') || '';
+            if (!email || !password) return;
+            const payload = { email, password, role: 'DEVELOPER', developer_name: devName };
+            const resp = await fetch('/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            if (resp.ok) { alert('Registered. Now login.'); } else { const d = await resp.json(); alert('Register failed: ' + (d.detail || '')); }
+        }
+        async function logout() {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('email');
+            setToken('');
+            showResult('Logged out successfully.', 'success', 'test');
+            window.location.href = '/static/login.html';
+        }
+
+        // async function loadCategories() { // This function is removed as per the simplified UI
+        //     try {
+        //         const resp = await fetch('/bots/categories/');
+        //         const cats = await resp.json();
+        //         const sel = document.getElementById('submitCategory');
+        //         if (!sel) return;
+        //         sel.innerHTML = '';
+        //         (cats || []).forEach(c => {
+        //             const opt = document.createElement('option');
+        //             opt.value = c.id; opt.textContent = c.name; sel.appendChild(opt);
+        //         });
+        //     } catch (_) {}
+        // }
+        // loadCategories(); // This line is removed as per the simplified UI
+
+        // Save bot code as draft
+        async function saveDraft() {
+            const name = prompt('Enter draft name:');
+            if (!name) return;
+            
+            const description = prompt('Enter draft description (optional):') || '';
+            const botCode = codeEditor.getValue();
+            const categoryId = document.getElementById('categorySelect')?.value || null;
+            
+            if (!botCode.trim()) {
+                alert('Please enter some bot code first');
+                return;
+            }
+            
+            try {
+                const form = new FormData();
+                form.append('name', name);
+                form.append('description', description);
+                form.append('bot_code', botCode);
+                if (categoryId && categoryId !== '') {
+                    form.append('category_id', categoryId);
+                }
+                
+                const resp = await fetch(`${API_BASE}/save-bot-code`, { 
+                    method: 'POST', 
+                    headers: authHeaders(), 
+                    body: form 
+                });
+                
+                const data = await resp.json();
+                if (data.success) {
+                    alert('✅ Draft saved successfully!');
+                    // Refresh drafts list if available
+                    if (typeof loadDraftsList === 'function') {
+                        loadDraftsList();
+                    }
+                } else {
+                    alert('❌ Failed to save draft: ' + data.message);
+                }
+            } catch (error) {
+                alert('❌ Error saving draft: ' + error.message);
+            }
+        }
+        // Load drafts list
+        async function loadDraftsList() {
+            try {
+                const resp = await fetch(`${API_BASE}/list-saved-bots`, { headers: authHeaders() });
+                const data = await resp.json();
+                
+                if (data.success) {
+                    const container = document.getElementById('draftsList');
+                    if (container) {
+                        if (data.drafts.length === 0) {
+                            container.innerHTML = '<p class="text-muted">No drafts found</p>';
+                        } else {
+                            let html = '<div class="list-group">';
+                            data.drafts.forEach(draft => {
+                                html += `
+                                    <div class="list-group-item">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <h6 class="mb-1">${draft.name}</h6>
+                                                <p class="mb-1 text-muted">${draft.description || 'No description'}</p>
+                                                <small class="text-muted">Updated: ${new Date(draft.updated_at).toLocaleString()}</small>
+                                            </div>
+                                            <div class="btn-group btn-group-sm">
+                                                <button class="btn btn-outline-primary" onclick="loadDraft(${draft.id})">
+                                                    <i class="fas fa-edit"></i> Edit
+                                                </button>
+                                                <button class="btn btn-outline-success" onclick="submitDraft(${draft.id})">
+                                                    <i class="fas fa-upload"></i> Submit
+                                                </button>
+                                                <button class="btn btn-outline-danger" onclick="deleteDraft(${draft.id})">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            });
+                            html += '</div>';
+                            container.innerHTML = html;
+                        }
+                    }
+                } else {
+                    console.error('Failed to load drafts:', data.message);
+                }
+            } catch (error) {
+                console.error('Error loading drafts:', error);
+            }
+        }
+        // let selectedDraftKey = ''; // This variable is removed as per the simplified UI
+        // function setSelectedDraft(k) { selectedDraftKey = k; showResult('Selected draft: ' + k, 'success', 'test'); } // This function is removed as per the simplified UI
+        // Load a specific draft
+        async function loadDraft(draftId) {
+            try {
+                const resp = await fetch(`${API_BASE}/load-bot-code/${draftId}`, { headers: authHeaders() });
+                const data = await resp.json();
+                
+                if (data.success) {
+                    const draft = data.draft;
+                    codeEditor.setValue(draft.bot_code);
+                    
+                    // Load configuration if available
+                    if (draft.bot_code) {
+                        loadConfigParameters(draft.bot_code);
+                    }
+                    
+                    // Update category if available
+                    if (draft.category_id && document.getElementById('categorySelect')) {
+                        document.getElementById('categorySelect').value = draft.category_id;
+                    }
+                    
+                    alert(`✅ Draft "${draft.name}" loaded successfully!`);
+                    
+                    // Switch to test tab
+                    const testTab = document.getElementById('test-tab');
+                    if (testTab) {
+                        const tab = new bootstrap.Tab(testTab);
+                        tab.show();
+                    }
+                } else {
+                    alert('❌ Failed to load draft: ' + data.message);
+                }
+            } catch (error) {
+                alert('❌ Error loading draft: ' + error.message);
+            }
+        }
+        // Delete a draft
+        async function deleteDraft(draftId) {
+            if (!confirm('Are you sure you want to delete this draft? This action cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                const resp = await fetch(`${API_BASE}/delete-bot-code/${draftId}`, { 
+                    method: 'DELETE', 
+                    headers: authHeaders() 
+                });
+                
+                const data = await resp.json();
+                if (data.success) {
+                    alert('✅ Draft deleted successfully!');
+                    // Refresh drafts list
+                    loadDraftsList();
+                } else {
+                    alert('❌ Failed to delete draft: ' + data.message);
+                }
+            } catch (error) {
+                alert('❌ Error deleting draft: ' + error.message);
+            }
+        }
+
+        async function submitFromEditor() {
+            try {
+                if (!authToken) { alert('Please login as developer.'); return; }
+                const code = codeEditor.getValue() || '';
+                localStorage.setItem('pending_submit_code', code);
+                window.location.href = '/static/submit_bot.html';
+            } catch (e) { showResult('Error preparing submit: ' + e.message, 'error', 'test'); }
+        }
+        // Submit a draft as a bot
+        async function submitDraft(draftId) {
+            try {
+                // First load the draft to get the code
+                const resp = await fetch(`${API_BASE}/load-bot-code/${draftId}`, { headers: authHeaders() });
+                const data = await resp.json();
+                
+                if (data.success) {
+                    const draft = data.draft;
+                    
+                    // Store the draft data in localStorage for the submit page
+                    localStorage.setItem('submitDraftData', JSON.stringify({
+                        name: draft.name,
+                        description: draft.description,
+                        bot_code: draft.bot_code,
+                        category_id: draft.category_id
+                    }));
+                    
+                    // Redirect to submit page
+                    window.location.href = '/static/submit_bot.html?from_draft=true';
+                } else {
+                    alert('❌ Failed to load draft: ' + data.message);
+                }
+            } catch (error) {
+                alert('❌ Error submitting draft: ' + error.message);
+            }
+        }
+
+        // Add auth header to test/backtest/live if available using fetch wrapper would be ideal; here we keep endpoints open only for developers on server.
+        // End of auth/drafts logic.
+
+        // --- Live WebSocket streaming ---
+        let liveSocket = null;
+        let liveSignalsBuffer = [];
+        function appendLiveSignalPoint(tsIso, price, signal) {
+            liveSignalsBuffer.push({ timestamp: tsIso, price, signal: signal || { action: '-' } });
+            // Keep last 300 points for performance
+            if (liveSignalsBuffer.length > 300) liveSignalsBuffer.shift();
+            // Update chart
+            updateChart(liveSignalsBuffer);
+        }
+        function addLiveActionRow(actionPayload) {
+            const resultsDiv = document.getElementById('liveResults');
+            const action = (actionPayload.signal && actionPayload.signal.action) || '-';
+            const cls = action === 'BUY' ? 'trade-buy' : action === 'SELL' ? 'trade-sell' : 'trade-item';
+            const icon = action === 'BUY' ? 'fas fa-arrow-up' : action === 'SELL' ? 'fas fa-arrow-down' : 'fas fa-minus';
+            const color = action === 'BUY' ? 'text-success' : action === 'SELL' ? 'text-danger' : 'text-muted';
+            const price = actionPayload.trade ? actionPayload.trade.price : null;
+            const html = `
+              <div class="trade-item ${cls}">
+                <div class="d-flex justify-content-between align-items-center">
+                  <div>
+                    <i class="${icon} ${color}"></i>
+                    <strong>${action}</strong>
+                    <small class="text-muted">${new Date(actionPayload.timestamp).toLocaleString()}</small>
+                  </div>
+                  <div class="text-end">
+                    ${price !== null ? `<div><strong>Price:</strong> $${Number(price).toFixed(2)}</div>` : ''}
+                    <div><small class="text-muted">${(actionPayload.signal && actionPayload.signal.reason) || ''}</small></div>
+                  </div>
+                </div>
+              </div>`;
+            const container = document.createElement('div');
+            container.innerHTML = html;
+            resultsDiv.appendChild(container.firstElementChild);
+            const tab = new bootstrap.Tab(document.getElementById('live-tab'));
+            tab.show();
+        }
+        // Replace Start/Stop with toggle
+        function toggleLiveStream() {
+            const btn = document.getElementById('liveBtn');
+            if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
+                try { liveSocket.send('stop'); liveSocket.close(); } catch(_) {}
+                btn.classList.remove('btn-danger');
+                btn.classList.add('btn-warning');
+                btn.innerHTML = '<i class="fas fa-broadcast-tower"></i> Live Test';
+                return;
+            }
+            // Start stream
+            try {
+                if (liveSocket) { try { liveSocket.close(); } catch(_){} }
+                const params = new URLSearchParams({
+                    exchange_type: document.getElementById('exchangeType').value,
+                    symbol: document.getElementById('symbol').value,
+                    timeframe: document.getElementById('timeframe').value,
+                    initial_balance: document.getElementById('initialBalance').value,
+                    fee_rate: document.getElementById('feeRate').value,
+                    trade_amount_type: document.getElementById('sizingType').value,
+                    trade_amount_value: document.getElementById('sizingValue').value,
+                });
+                const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + `/api/dev-sandbox/live/ws?${params.toString()}`;
+                liveSocket = new WebSocket(wsUrl);
+                // Reset live UI
+                liveSignalsBuffer = [];
+                document.getElementById('liveResults').innerHTML = '<h6><i class="fas fa-broadcast-tower"></i> Live Actions</h6>';
+                const tab = new bootstrap.Tab(document.getElementById('live-tab'));
+                tab.show();
+                btn.classList.remove('btn-warning');
+                btn.classList.add('btn-danger');
+                btn.innerHTML = '<i class="fas fa-stop"></i> Stop';
+                liveSocket.onopen = () => {};
+                liveSocket.onmessage = (ev) => {
+                    try {
+                        const msg = JSON.parse(ev.data);
+                        if (msg.type === 'candles') {
+                            updateCandleChart(msg.candles || []);
+                        } else if (msg.type === 'tick') {
+                            appendLiveSignalPoint(msg.timestamp, msg.price, { action: '-' });
+                        } else if (msg.type === 'action') {
+                            appendLiveSignalPoint(msg.timestamp, (msg.trade && msg.trade.price) || liveSignalsBuffer.at(-1)?.price || 0, msg.signal);
+                            addLiveActionRow(msg);
+                        } else if (msg.type === 'error') {
+                            showResult('Live error: ' + msg.message, 'error', 'live');
+                        } else if (msg.type === 'stopped') {
+                            showResult('Live stopped', 'success', 'live');
+                            btn.classList.remove('btn-danger');
+                            btn.classList.add('btn-warning');
+                            btn.innerHTML = '<i class="fas fa-broadcast-tower"></i> Live Test';
+                        }
+                    } catch (e) {}
+                };
+                liveSocket.onerror = () => { showResult('WebSocket error', 'error', 'live'); };
+                liveSocket.onclose = () => {
+                    btn.classList.remove('btn-danger');
+                    btn.classList.add('btn-warning');
+                    btn.innerHTML = '<i class="fas fa-broadcast-tower"></i> Live Test';
+                };
+            } catch (e) {
+                showResult('Cannot start live stream: ' + e.message, 'error', 'live');
+            }
+        }
+
+        // Candlestick chart handling with Chart.js
+        // You need to include chartjs-adapter and financial plugin externally if not available
+        let candleChart = null;
+        function ensureCandleChart() {
+            const ctx = document.getElementById('priceChart').getContext('2d');
+            if (candleChart) return candleChart;
+            candleChart = new Chart(ctx, {
+                type: 'candlestick',
+                data: { datasets: [{ label: 'Candles', data: [] }] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    parsing: false,
+                    scales: { x: { type: 'time', time: { unit: 'minute' } } },
+                    plugins: { legend: { display: false }, title: { display: true, text: 'Live Candles' } }
+                }
+            });
+            return candleChart;
+        }
+        function updateCandleChart(candles) {
+            try {
+                const chart = ensureCandleChart();
+                // candles: [{x: ms, o,h,l,c}]
+                chart.data.datasets[0].data = candles.map(c => ({ x: c.x, o: c.o, h: c.h, l: c.l, c: c.c }));
+                chart.update('none');
+            } catch (_) {}
+        }
+
+        // Update configuration form with new schema
+        function updateConfigurationForm(configSchema) {
+            try {
+                console.log('Updating configuration form with schema:', configSchema);
+                
+                if (!configSchema || typeof configSchema !== 'object') {
+                    console.warn('updateConfigurationForm: Invalid config schema');
+                    return;
+                }
+                
+                // Get current config values to preserve user edits
+                const currentConfig = getCurrentConfig();
+                console.log('Current config:', currentConfig);
+                
+                // Merge current values with new schema defaults
+                const mergedConfig = {};
+                Object.keys(configSchema).forEach(key => {
+                    if (currentConfig[key] !== undefined && currentConfig[key] !== null && currentConfig[key] !== '') {
+                        mergedConfig[key] = currentConfig[key];
+                    } else if (configSchema[key].default !== undefined) {
+                        mergedConfig[key] = configSchema[key].default;
+                    }
+                });
+                
+                console.log('Merged config:', mergedConfig);
+                
+                // Update config editor
+                if (configEditor) {
+                    configEditor.setValue(JSON.stringify(mergedConfig, null, 2));
+                } else {
+                    console.warn('configEditor is not available');
+                }
+                
+                // Generate parameter inputs
+                generateParameterInputs(configSchema, mergedConfig);
+                
+                console.log('Configuration form updated successfully');
+                
+            } catch (error) {
+                console.error('Error updating configuration form:', error);
+                // Show error to user
+                showResult('Error updating configuration form: ' + error.message, 'error', 'test');
+            }
+        }
+
+        // Show debug panel with line numbers and error highlighting
+        function showDebugPanel(botCode, errorDetails = null) {
+            const debugPanel = document.getElementById('debugPanel');
+            const codeWithLines = document.getElementById('codeWithLines');
+            const errorDetailsDiv = document.getElementById('errorDetails');
+            
+            // Show the debug panel
+            debugPanel.style.display = 'block';
+            
+            // Safety check for botCode
+            if (!botCode || typeof botCode !== 'string') {
+                codeWithLines.innerHTML = '<div class="text-warning">No bot code available for debugging</div>';
+                errorDetailsDiv.innerHTML = '<div class="alert alert-warning">No error details available</div>';
+                return;
+            }
+            
+            // Display code with line numbers
+            const lines = botCode.split('\n');
+            let codeHtml = '';
+            
+            for (let i = 0; i < lines.length; i++) {
+                const lineNum = i + 1;
+                const line = lines[i];
+                let lineClass = '';
+                let lineContent = line;
+                
+                // Highlight error line if error details are provided
+                if (errorDetails && errorDetails.line_number === lineNum) {
+                    lineClass = 'bg-danger text-white';
+                    lineContent = `>>> ${line}`;
+                }
+                
+                codeHtml += `<div class="${lineClass}">${lineNum.toString().padStart(3, ' ')}: ${lineContent}</div>`;
+            }
+            
+            codeWithLines.innerHTML = codeHtml;
+            
+            // Display error details if provided
+            if (errorDetails) {
+                let errorHtml = `
+                    <div class="alert alert-danger">
+                        <h6>❌ ${errorDetails.error_type}</h6>
+                        <p><strong>Message:</strong> ${errorDetails.error_message}</p>
+                        <p><strong>Line:</strong> ${errorDetails.line_number}</p>
+                        <p><strong>Column:</strong> ${errorDetails.column || 'N/A'}</p>
+                `;
+                
+                if (errorDetails.suggestion) {
+                    errorHtml += `<p><strong>Suggestion:</strong> ${errorDetails.suggestion}</p>`;
+                }
+                
+                errorHtml += `</div>`;
+                errorDetailsDiv.innerHTML = errorHtml;
+            } else {
+                errorDetailsDiv.innerHTML = '<div class="alert alert-info">No errors detected</div>';
+            }
+        }
+        
+        // Hide debug panel
+        function hideDebugPanel() {
+            document.getElementById('debugPanel').style.display = 'none';
+        }
+
+        // Live test variables
+        let liveTestWebSocket = null;
+        let liveTestActive = false;
+
+        // Toggle live test
+        async function toggleLiveStream() {
+            const liveBtn = document.getElementById('liveBtn');
+            
+            if (!liveTestActive) {
+                // Start live test
+                try {
+                    showProgress();
+                    addProgressLog('Starting live test...');
+                    
+                    const exchangeType = document.getElementById('exchangeType').value;
+                    const symbol = document.getElementById('symbol').value;
+                    const timeframe = document.getElementById('timeframe').value;
+                    const initialBalance = document.getElementById('initialBalance').value;
+                    const feeRate = document.getElementById('feeRate').value;
+                    const tradeAmountType = document.getElementById('sizingType').value;
+                    const tradeAmountValue = document.getElementById('sizingValue').value;
+                    
+                    // Get bot control settings
+                    const botControls = getBotControlSettings();
+                    
+                    // Build WebSocket URL with parameters
+                    const wsUrl = `ws://${window.location.host}/api/dev-sandbox/live/ws?` + 
+                        `exchange_type=${encodeURIComponent(exchangeType)}&` +
+                        `symbol=${encodeURIComponent(symbol)}&` +
+                        `timeframe=${encodeURIComponent(timeframe)}&` +
+                        `initial_balance=${encodeURIComponent(initialBalance)}&` +
+                        `fee_rate=${encodeURIComponent(feeRate)}&` +
+                        `trade_amount_type=${encodeURIComponent(tradeAmountType)}&` +
+                        `trade_amount_value=${encodeURIComponent(tradeAmountValue)}&` +
+                        `prediction_cycle=${encodeURIComponent(botControls.prediction_cycle)}&` +
+                        `data_fetch_timeframe=${encodeURIComponent(botControls.data_fetch_timeframe)}&` +
+                        `data_fetch_limit=${encodeURIComponent(botControls.data_fetch_limit)}&` +
+                        `prediction_cycle_configurable=${encodeURIComponent(botControls.prediction_cycle_configurable)}`;
+                    
+                    addProgressLog(`Prediction cycle: ${botControls.prediction_cycle}, Data fetch: ${botControls.data_fetch_timeframe} (${botControls.data_fetch_limit} candles)`);
+                    addProgressLog('Connecting to live stream...');
+                    
+                    liveTestWebSocket = new WebSocket(wsUrl);
+                    
+                    liveTestWebSocket.onopen = function(event) {
+                        addProgressLog('Connected to live stream');
+                        liveTestActive = true;
+                        liveBtn.innerHTML = '<i class="fas fa-stop"></i> Stop Live Test';
+                        liveBtn.className = 'btn btn-danger btn-sm';
+                        
+                        // Clear previous results
+                        document.getElementById('liveResults').innerHTML = '<h6><i class="fas fa-broadcast-tower"></i> Live Test Running...</h6>';
+                    };
+                    
+                    liveTestWebSocket.onmessage = function(event) {
+                        const data = JSON.parse(event.data);
+                        handleLiveTestMessage(data);
+                    };
+                    
+                    liveTestWebSocket.onerror = function(error) {
+                        addProgressLog(`WebSocket error: ${error}`);
+                        stopLiveTest();
+                    };
+                    
+                    liveTestWebSocket.onclose = function(event) {
+                        addProgressLog('Live test connection closed');
+                        stopLiveTest();
+                    };
+                    
+                } catch (error) {
+                    addProgressLog(`Error starting live test: ${error.message}`);
+                    stopLiveTest();
+                }
+            } else {
+                // Stop live test
+                stopLiveTest();
+            }
+        }
+        
+        function stopLiveTest() {
+            if (liveTestWebSocket) {
+                liveTestWebSocket.close();
+                liveTestWebSocket = null;
+            }
+            liveTestActive = false;
+            const liveBtn = document.getElementById('liveBtn');
+            liveBtn.innerHTML = '<i class="fas fa-broadcast-tower"></i> Live Test';
+            liveBtn.className = 'btn btn-warning btn-sm';
+            hideProgress();
+        }
+        
+        function handleLiveTestMessage(data) {
+            const liveResultsDiv = document.getElementById('liveResults');
+            
+            switch (data.type) {
+                case 'connection':
+                    addProgressLog(`Connected: ${data.message}`);
+                    break;
+                    
+                case 'trade':
+                    addProgressLog(`${data.action} trade: $${data.price.toFixed(2)} - Amount: $${data.amount.toFixed(2)}`);
+                    
+                    // Update live results display
+                    const tradeHtml = `
+                        <div class="trade-item trade-${data.action.toLowerCase()}">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <i class="fas fa-arrow-${data.action === 'BUY' ? 'up' : 'down'} text-${data.action === 'BUY' ? 'success' : 'danger'}"></i>
+                                    <strong>${data.action}</strong>
+                                    <small class="text-muted">${new Date(data.timestamp).toLocaleTimeString()}</small>
+                                </div>
+                                <div class="text-end">
+                                    <div><strong>Price:</strong> $${data.price.toFixed(2)}</div>
+                                    <div><strong>Amount:</strong> $${data.amount.toFixed(2)}</div>
+                                    <div><strong>Fee:</strong> $${data.fee.toFixed(4)}</div>
+                                    <div><strong>Balance:</strong> $${data.balance.toFixed(2)}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Add to existing results
+                    const existingContent = liveResultsDiv.innerHTML;
+                    if (existingContent.includes('Live Test Running...')) {
+                        liveResultsDiv.innerHTML = '<h6><i class="fas fa-broadcast-tower"></i> Live Test Results</h6><div class="backtest-results">' + tradeHtml + '</div>';
+                    } else {
+                        const resultsDiv = liveResultsDiv.querySelector('.backtest-results');
+                        if (resultsDiv) {
+                            resultsDiv.insertAdjacentHTML('beforeend', tradeHtml);
+                        }
+                    }
+                    break;
+                    
+                case 'market_update':
+                    addProgressLog(`Market update: $${data.price.toFixed(2)} - Signal: ${data.signal}`);
+                    break;
+                    
+                case 'summary':
+                    addProgressLog(`Live test completed: ${data.total_trades} trades, ${data.total_return.toFixed(2)}% return`);
+                    
+                    // Add summary to results
+                    const summaryHtml = `
+                        <div class="mt-3">
+                            <h6>Final Summary</h6>
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <div class="card"><div class="card-body text-center">
+                                        <h6>Initial Balance</h6>
+                                        <p>$${data.initial_balance.toLocaleString()}</p>
+                                    </div></div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="card"><div class="card-body text-center">
+                                        <h6>Final Balance</h6>
+                                        <p>$${data.final_balance.toLocaleString()}</p>
+                                    </div></div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="card"><div class="card-body text-center">
+                                        <h6>Total Return</h6>
+                                        <p class="${data.total_return >= 0 ? 'text-success' : 'text-danger'}">${data.total_return >= 0 ? '+' : ''}${data.total_return.toFixed(2)}%</p>
+                                    </div></div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="card"><div class="card-body text-center">
+                                        <h6>Total Trades</h6>
+                                        <p>${data.total_trades}</p>
+                                    </div></div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    liveResultsDiv.insertAdjacentHTML('beforeend', summaryHtml);
+                    break;
+                    
+                case 'error':
+                    addProgressLog(`Error: ${data.message}`);
+                    break;
+            }
+        }
+
+        // Validate timeframes
+        function validateTimeframes() {
+            const dataFetch = document.getElementById('dataFetchTimeframe').value;
+            const predictionCycle = document.getElementById('predictionCycle').value;
+            const validationDiv = document.getElementById('timeframeValidation');
+            
+            // Convert timeframes to seconds for comparison
+            const timeframeToSeconds = {
+                '1s': 1, '1m': 60, '3m': 180, '5m': 300, '15m': 900, '30m': 1800,
+                '1h': 3600, '2h': 7200, '4h': 14400, '6h': 21600, '8h': 28800, '12h': 43200,
+                '1d': 86400, '3d': 259200, '1w': 604800, '1M': 2592000
+            };
+            
+            const dataFetchSeconds = timeframeToSeconds[dataFetch] || 300;
+            const predictionSeconds = timeframeToSeconds[predictionCycle] || 300;
+            
+            if (predictionSeconds < dataFetchSeconds) {
+                validationDiv.style.display = 'block';
+                validationDiv.innerHTML = `
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>Warning:</strong> Prediction cycle (${predictionCycle}) is shorter than data fetch timeframe (${dataFetch}). 
+                    This may cause performance issues. Consider using prediction cycle ≥ data fetch timeframe.
+                `;
+            } else {
+                validationDiv.style.display = 'none';
+            }
+        }
+        
+        // Initialize validation on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            validateTimeframes();
+        });
+    </script>
+</body>
+</html> 

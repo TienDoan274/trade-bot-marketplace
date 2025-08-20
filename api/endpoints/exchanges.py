@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from core import models, schemas
 from core.database import get_db
 from core.security import get_current_user
-from services.exchange_factory import ExchangeFactory, validate_exchange_credentials
+from services.exchange_factory import ExchangeFactory
 import logging
 
 logger = logging.getLogger(__name__)
@@ -79,7 +79,7 @@ async def validate_credentials_get(
     try:
         logger.info(f"Validating {exchange_name} credentials for user {current_user.email} (testnet={testnet})")
         
-        is_valid, message = validate_exchange_credentials(
+        is_valid, message = ExchangeFactory.validate_exchange_credentials(
             exchange_name=exchange_name,
             api_key=api_key,
             api_secret=api_secret,
@@ -131,7 +131,7 @@ async def validate_credentials_post(
     try:
         logger.info(f"Validating {credentials.exchange_name} credentials for user {current_user.email}")
         
-        is_valid, message = validate_exchange_credentials(
+        is_valid, message = ExchangeFactory.validate_exchange_credentials(
             exchange_name=credentials.exchange_name,
             api_key=credentials.api_key,
             api_secret=credentials.api_secret,
@@ -263,7 +263,7 @@ async def test_exchange_connection(
     """Test connection to exchange and get basic account info"""
     try:
         # First validate credentials
-        is_valid, message = validate_exchange_credentials(
+        is_valid, message = ExchangeFactory.validate_exchange_credentials(
             exchange_name=exchange_name,
             api_key=api_key,
             api_secret=api_secret,

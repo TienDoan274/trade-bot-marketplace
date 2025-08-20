@@ -5,619 +5,423 @@ Provides complete trading bot framework with exchange integration and data proce
 
 import pandas as pd
 import numpy as np
-from typing import Dict, Any, List, Optional, Union
+from abc import ABC, abstractmethod
+from typing import Dict, Any, Optional, Union, List
 from datetime import datetime, timedelta
 import logging
-from abc import ABC, abstractmethod
-
-from bots.bot_sdk.Action import Action
-from services.exchange_factory import ExchangeFactory, BaseExchange
-
-logger = logging.getLogger(__name__)
 
 class CustomBot(ABC):
     """
-    Enhanced base class for all trading bots
-    Provides complete flow: data crawling -> preprocessing -> algorithm -> prediction -> action
+    Abstract base class for custom trading bots.
+    
+    Key Changes:
+    - prediction_cycle: How often the bot should predict actions (independent of data fetching)
+    - Developers can fetch data whenever they want using exchange client
+    - No automatic data injection - developers control their own data pipeline
     """
     
-    def __init__(self, config: Dict[str, Any], api_keys: Dict[str, str]):
+    def __init__(self, config: Dict[str, Any]):
         """
-        Initialize bot with configuration and API keys
+        Initialize the bot with configuration.
         
         Args:
-            config: Bot configuration including strategy parameters and models
-            api_keys: User's exchange API credentials
+            config: Bot configuration dictionary containing:
+                - prediction_cycle: Time interval for action prediction (e.g., "5m", "1h", "4h")
+                - prediction_cycle_configurable: Whether users can change prediction_cycle (default: True)
+                - max_data_points: Maximum number of candles to fetch (optional, default 1000)
+                - required_warmup_periods: Minimum candles needed before trading (optional, default 50)
+                - Other custom parameters...
         """
         self.config = config
-        self.api_keys = api_keys
+        self.logger = logging.getLogger(self.__class__.__name__)
         
-        # Bot metadata
-        self.bot_name = "CustomBot"
-        self.description = "Base trading bot"
-        self.version = "1.0.0"
-        self.bot_type = "TECHNICAL"
+        # Prediction cycle configuration
+        self.prediction_cycle = config.get('prediction_cycle', '1h')
+        self.prediction_cycle_configurable = config.get('prediction_cycle_configurable', True)
+        self.prediction_cycle_seconds = self._parse_timeframe(self.prediction_cycle)
         
-        # Exchange client
-        self.exchange_client: Optional[BaseExchange] = None
-        self.exchange_type = config.get('exchange_type', 'BINANCE')
-        self.trading_pair = config.get('trading_pair', 'BTC/USDT')
+        # Data fetching configuration (optional - developers can override)
+        self.max_data_points = config.get('max_data_points', 1000)
+        self.required_warmup_periods = config.get('required_warmup_periods', 50)
         
-        # Data configuration
-        self.max_data_points = config.get('max_data_points', 1000)  # Maximum historical data points
-        self.required_warmup_periods = config.get('required_warmup_periods', 50)  # Minimum periods for analysis
+        # Trading state
+        self.last_action = None
+        self.last_action_time = None
+        self.is_initialized = False
         
-        # Model storage
-        self.models = {}
-        self.scalers = {}
-        self.is_models_loaded = False
+        # Exchange client (will be set by the system)
+        self.exchange_client = None
         
-        # Performance tracking
-        self.last_analysis_time = None
-        self.analysis_count = 0
+        # Validate prediction cycle if configurable
+        if self.prediction_cycle_configurable:
+            if hasattr(self, 'validate_prediction_cycle'):
+                if not self.validate_prediction_cycle(self.prediction_cycle):
+                    supported = self.get_supported_prediction_cycles() if hasattr(self, 'get_supported_prediction_cycles') else []
+                    recommended = self.get_recommended_prediction_cycle() if hasattr(self, 'get_recommended_prediction_cycle') else self.prediction_cycle
+                    raise ValueError(f"Invalid prediction cycle: {self.prediction_cycle}. Supported: {supported}. Recommended: {recommended}")
         
-        # Initialize exchange client
-        self._initialize_exchange_client()
+        # Initialize the bot
+        self.initialize()
+        self.is_initialized = True
         
-        # Load models if available
-        if 'models' in config:
-            self.load_models(config['models'])
+        self.logger.info(f"{self.__class__.__name__} initialized with prediction cycle: {self.prediction_cycle}")
+        if self.prediction_cycle_configurable:
+            self.logger.info(f"Prediction cycle is configurable by users")
+        else:
+            self.logger.info(f"Prediction cycle is fixed and cannot be changed by users")
     
-    def _initialize_exchange_client(self):
-        """Initialize exchange client for data access"""
-        try:
-            if self.api_keys.get('key') and self.api_keys.get('secret'):
-                self.exchange_client = ExchangeFactory.create_exchange(
-                    exchange_name=self.exchange_type,
-                    api_key=self.api_keys['key'],
-                    api_secret=self.api_keys['secret'],
-                    testnet=self.config.get('testnet', True)
-                )
-                logger.info(f"Exchange client initialized for {self.exchange_type}")
-            else:
-                logger.warning("No API keys provided - exchange client not initialized")
-        except Exception as e:
-            logger.error(f"Failed to initialize exchange client: {e}")
-            self.exchange_client = None
-    
-    def load_models(self, models_dict: Dict[str, Any]):
-        """Load ML models and scalers from config"""
-        try:
-            self.models = models_dict.get('models', {})
-            self.scalers = models_dict.get('scalers', {})
-            self.is_models_loaded = len(self.models) > 0
-            logger.info(f"Loaded {len(self.models)} models and {len(self.scalers)} scalers")
-        except Exception as e:
-            logger.error(f"Failed to load models: {e}")
-            self.is_models_loaded = False
-    
-    def execute_full_cycle(self, timeframe: str, subscription_config: Dict[str, Any] = None) -> Action:
-        """
-        Main execution function - complete cycle from data to action
-        
-        Args:
-            timeframe: Trading timeframe (1m, 5m, 1h, 1d)
-            subscription_config: Additional subscription configuration
-            
-        Returns:
-            Action: Trading action (BUY/SELL/HOLD)
-        """
-        try:
-            self.last_analysis_time = datetime.utcnow()
-            self.analysis_count += 1
-            
-            logger.info(f"Starting full cycle analysis for {self.trading_pair} on {timeframe}")
-            
-            # Step 1: Crawl market data
-            raw_data = self.crawl_market_data(timeframe)
-            if raw_data is None or raw_data.empty:
-                return Action("HOLD", 0.0, "No market data available")
-            
-            # Step 2: Preprocess data
-            processed_data = self.preprocess_data(raw_data)
-            if processed_data is None or processed_data.empty:
-                return Action("HOLD", 0.0, "Data preprocessing failed")
-            
-            # Step 3: Execute algorithm and get prediction
-            action = self.execute_algorithm(processed_data, timeframe, subscription_config)
-            
-            # Step 4: Post-process action (risk management, validation)
-            final_action = self.post_process_action(action, processed_data)
-            
-            logger.info(f"Full cycle completed: {final_action.action} at {final_action.value}")
-            return final_action
-            
-        except Exception as e:
-            logger.error(f"Error in full cycle execution: {e}")
-            return Action("HOLD", 0.0, f"Execution error: {str(e)}")
-    
-    def crawl_market_data(self, timeframe: str) -> pd.DataFrame:
-        """
-        Crawl market data from exchange
-        
-        Args:
-            timeframe: Trading timeframe
-            
-        Returns:
-            DataFrame: Raw market data with OHLCV
-        """
-        try:
-            if not self.exchange_client:
-                logger.error("Exchange client not available")
-                return pd.DataFrame()
-            
-            # Get symbol in exchange format
-            symbol = self.trading_pair.replace('/', '')
-            
-            # Get historical data
-            data = self.exchange_client.get_klines(
-                symbol=symbol,
-                interval=timeframe,
-                limit=self.max_data_points
-            )
-            
-            if data.empty:
-                logger.warning(f"No data received for {symbol}")
-                return pd.DataFrame()
-            
-            # Ensure we have enough data
-            if len(data) < self.required_warmup_periods:
-                logger.warning(f"Insufficient data: {len(data)} < {self.required_warmup_periods}")
-                return pd.DataFrame()
-            
-            # Add additional market information
-            data = self.enrich_market_data(data)
-            
-            logger.info(f"Crawled {len(data)} data points for {symbol}")
-            return data
-            
-        except Exception as e:
-            logger.error(f"Error crawling market data: {e}")
-            return pd.DataFrame()
-    
-    def enrich_market_data(self, data: pd.DataFrame) -> pd.DataFrame:
-        """
-        Enrich market data with additional information
-        
-        Args:
-            data: Basic OHLCV data
-            
-        Returns:
-            DataFrame: Enriched data
-        """
-        try:
-            # Add basic calculations
-            data['price_change'] = data['close'].pct_change()
-            data['price_change_abs'] = data['close'].diff()
-            data['volume_change'] = data['volume'].pct_change()
-            data['volatility'] = data['close'].rolling(window=20).std()
-            
-            # Add time-based features
-            data['hour'] = data['timestamp'].dt.hour
-            data['day_of_week'] = data['timestamp'].dt.dayofweek
-            data['is_weekend'] = data['day_of_week'].isin([5, 6])
-            
-            # Add market session info (if needed)
-            data = self.add_market_session_info(data)
-            
-            return data
-            
-        except Exception as e:
-            logger.error(f"Error enriching market data: {e}")
-            return data
-    
-    def add_market_session_info(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Add market session information (Asian, European, US sessions)"""
-        try:
-            # Simple session classification based on UTC hours
-            def get_session(hour):
-                if 0 <= hour < 8:
-                    return "ASIAN"
-                elif 8 <= hour < 16:
-                    return "EUROPEAN"
-                else:
-                    return "US"
-            
-            data['market_session'] = data['hour'].apply(get_session)
-            return data
-            
-        except Exception as e:
-            logger.error(f"Error adding market session info: {e}")
-            return data
-    
-    def preprocess_data(self, raw_data: pd.DataFrame) -> pd.DataFrame:
-        """
-        Preprocess raw market data for analysis
-        
-        Args:
-            raw_data: Raw market data
-            
-        Returns:
-            DataFrame: Preprocessed data
-        """
-        try:
-            data = raw_data.copy()
-            
-            # Handle missing values
-            data = self.handle_missing_values(data)
-            
-            # Add technical indicators
-            data = self.add_technical_indicators(data)
-            
-            # Add custom features
-            data = self.add_custom_features(data)
-            
-            # Normalize/scale features if needed
-            if self.scalers:
-                data = self.apply_scaling(data)
-            
-            # Remove any remaining NaN values
-            data = data.dropna()
-            
-            logger.info(f"Preprocessed data shape: {data.shape}")
-            return data
-            
-        except Exception as e:
-            logger.error(f"Error preprocessing data: {e}")
-            return raw_data
-    
-    def handle_missing_values(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Handle missing values in data"""
-        try:
-            # Forward fill first, then backward fill
-            data = data.fillna(method='ffill').fillna(method='bfill')
-            
-            # Fill remaining NaN with appropriate values
-            numeric_columns = data.select_dtypes(include=[np.number]).columns
-            data[numeric_columns] = data[numeric_columns].fillna(0)
-            
-            return data
-            
-        except Exception as e:
-            logger.error(f"Error handling missing values: {e}")
-            return data
-    
-    def add_technical_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Add technical indicators to data"""
-        try:
-            # Simple Moving Averages
-            data['sma_10'] = data['close'].rolling(window=10).mean()
-            data['sma_20'] = data['close'].rolling(window=20).mean()
-            data['sma_50'] = data['close'].rolling(window=50).mean()
-            
-            # Exponential Moving Averages
-            data['ema_12'] = data['close'].ewm(span=12).mean()
-            data['ema_26'] = data['close'].ewm(span=26).mean()
-            
-            # RSI
-            data['rsi'] = self.calculate_rsi(data['close'].values, 14)
-            
-            # MACD
-            data['macd'] = data['ema_12'] - data['ema_26']
-            data['macd_signal'] = data['macd'].ewm(span=9).mean()
-            data['macd_histogram'] = data['macd'] - data['macd_signal']
-            
-            # Bollinger Bands
-            data['bb_middle'] = data['close'].rolling(window=20).mean()
-            bb_std = data['close'].rolling(window=20).std()
-            data['bb_upper'] = data['bb_middle'] + (bb_std * 2)
-            data['bb_lower'] = data['bb_middle'] - (bb_std * 2)
-            data['bb_width'] = data['bb_upper'] - data['bb_lower']
-            data['bb_position'] = (data['close'] - data['bb_lower']) / data['bb_width']
-            
-            # Volume indicators
-            data['volume_sma'] = data['volume'].rolling(window=20).mean()
-            data['volume_ratio'] = data['volume'] / data['volume_sma']
-            
-            return data
-            
-        except Exception as e:
-            logger.error(f"Error adding technical indicators: {e}")
-            return data
-    
-    def add_custom_features(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Add custom features specific to the bot strategy"""
-        try:
-            # Price momentum
-            data['momentum_5'] = data['close'].pct_change(5)
-            data['momentum_10'] = data['close'].pct_change(10)
-            
-            # Volatility measures
-            data['volatility_5'] = data['close'].rolling(window=5).std()
-            data['volatility_20'] = data['close'].rolling(window=20).std()
-            data['volatility_ratio'] = data['volatility_5'] / data['volatility_20']
-            
-            # Support/Resistance levels
-            data['support'] = data['low'].rolling(window=20).min()
-            data['resistance'] = data['high'].rolling(window=20).max()
-            data['support_distance'] = (data['close'] - data['support']) / data['close']
-            data['resistance_distance'] = (data['resistance'] - data['close']) / data['close']
-            
-            return data
-            
-        except Exception as e:
-            logger.error(f"Error adding custom features: {e}")
-            return data
-    
-    def apply_scaling(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Apply scaling to features if scalers are available"""
-        try:
-            if not self.scalers:
-                return data
-            
-            # Apply scaling to numeric columns
-            numeric_columns = data.select_dtypes(include=[np.number]).columns
-            
-            for scaler_name, scaler in self.scalers.items():
-                if hasattr(scaler, 'transform'):
-                    scaled_data = scaler.transform(data[numeric_columns])
-                    data[numeric_columns] = scaled_data
-                    logger.info(f"Applied {scaler_name} scaling")
-                    break  # Use first available scaler
-            
-            return data
-            
-        except Exception as e:
-            logger.error(f"Error applying scaling: {e}")
-            return data
+    def _parse_timeframe(self, timeframe: str) -> int:
+        """Parse timeframe string to seconds."""
+        tf_map = {
+            "1m": 60, "3m": 180, "5m": 300, "15m": 900,
+            "30m": 1800, "1h": 3600, "4h": 14400, "1d": 86400
+        }
+        return tf_map.get(timeframe, 3600)  # Default to 1h if invalid
     
     @abstractmethod
-    def execute_algorithm(self, data: pd.DataFrame, timeframe: str, subscription_config: Dict[str, Any] = None) -> Action:
+    def initialize(self):
         """
-        Execute trading algorithm - must be implemented by subclasses
-        
-        Args:
-            data: Preprocessed market data
-            timeframe: Trading timeframe
-            subscription_config: Additional configuration
-            
-        Returns:
-            Action: Trading action
+        Initialize bot-specific parameters and state.
+        Called once during bot initialization.
         """
         pass
     
-    def post_process_action(self, action: Action, data: pd.DataFrame) -> Action:
+    @abstractmethod
+    def execute_algorithm(self, current_time: datetime, market_context: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
         """
-        Post-process action with risk management and validation
+        Main algorithm method that predicts actions.
         
         Args:
-            action: Original action from algorithm
-            data: Market data for context
+            current_time: Current timestamp when this method is called
+            market_context: Optional context information (current price, volume, etc.)
             
         Returns:
-            Action: Final processed action
+            Action dictionary or None if no action
+            Example: {
+                "action": "BUY",  # or "SELL", "HOLD"
+                "amount": 100,     # Amount to trade
+                "reason": "RSI oversold condition",
+                "confidence": 0.85
+            }
         """
-        try:
-            # Risk management checks
-            if self.should_skip_action(action, data):
-                return Action("HOLD", action.value, "Action skipped due to risk management")
-            
-            # Adjust action based on market conditions
-            adjusted_action = self.adjust_action_for_market_conditions(action, data)
-            
-            # Validate action
-            if not self.validate_action(adjusted_action, data):
-                return Action("HOLD", action.value, "Action validation failed")
-            
-            return adjusted_action
-            
-        except Exception as e:
-            logger.error(f"Error in post-processing action: {e}")
-            return Action("HOLD", action.value, f"Post-processing error: {str(e)}")
+        pass
     
-    def should_skip_action(self, action: Action, data: pd.DataFrame) -> bool:
-        """Check if action should be skipped due to risk management"""
-        # TEMPORARILY DISABLED FOR TESTING
-        return False
+    def should_execute_prediction(self, current_time: datetime) -> bool:
+        """
+        Check if it's time to execute prediction based on prediction cycle.
+        
+        Args:
+            current_time: Current timestamp
+            
+        Returns:
+            True if prediction should be executed, False otherwise
+        """
+        if not self.last_action_time:
+            return True  # First execution
+        
+        time_since_last = (current_time - self.last_action_time).total_seconds()
+        return time_since_last >= self.prediction_cycle_seconds
+    
+    def get_market_data(self, symbol: str, timeframe: str, limit: int = None) -> pd.DataFrame:
+        """
+        Fetch market data from exchange.
+        Developers can use this method to get data whenever they need it.
+        
+        Args:
+            symbol: Trading pair (e.g., "BTC/USDT")
+            timeframe: Data timeframe (e.g., "1m", "5m", "1h")
+            limit: Number of candles to fetch (defaults to self.max_data_points)
+            
+        Returns:
+            DataFrame with OHLCV data
+        """
+        if not self.exchange_client:
+            raise RuntimeError("Exchange client not initialized")
+        
+        limit = limit or self.max_data_points
         
         try:
-            # Skip during high volatility periods
-            if 'volatility' in data.columns:
-                current_volatility = data['volatility'].iloc[-1]
-                avg_volatility = data['volatility'].mean()
-                
-                # Tạm thời nới lỏng: từ 2x lên 5x
-                if current_volatility > avg_volatility * 5:
-                    logger.warning("Skipping action due to high volatility")
-                    return True
+            # Fetch klines data
+            klines = self.exchange_client.get_klines(
+                symbol=symbol,
+                interval=timeframe,
+                limit=limit
+            )
             
-            # Skip during low volume periods
-            if 'volume_ratio' in data.columns:
-                current_volume_ratio = data['volume_ratio'].iloc[-1]
-                # Tạm thời nới lỏng: từ 0.5 xuống 0.1 (10% thay vì 50%)
-                if current_volume_ratio < 0.1:
-                    logger.warning("Skipping action due to low volume")
-                    return True
+            # Convert to DataFrame
+            df = pd.DataFrame(klines, columns=[
+                'timestamp', 'open', 'high', 'low', 'close', 'volume',
+                'close_time', 'quote_asset_volume', 'number_of_trades',
+                'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
+            ])
             
-            return False
+            # Convert types
+            numeric_columns = ['open', 'high', 'low', 'close', 'volume']
+            for col in numeric_columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            df.set_index('timestamp', inplace=True)
+            
+            # Sort by timestamp (oldest first)
+            df.sort_index(inplace=True)
+            
+            self.logger.info(f"Fetched {len(df)} candles for {symbol} on {timeframe}")
+            return df
             
         except Exception as e:
-            logger.error(f"Error checking if action should be skipped: {e}")
-            return False
+            self.logger.error(f"Error fetching market data: {e}")
+            return pd.DataFrame()
     
-    def adjust_action_for_market_conditions(self, action: Action, data: pd.DataFrame) -> Action:
-        """Adjust action based on current market conditions"""
+    def get_current_price(self, symbol: str) -> Optional[float]:
+        """
+        Get current price for a symbol.
+        
+        Args:
+            symbol: Trading pair
+            
+        Returns:
+            Current price or None if error
+        """
+        if not self.exchange_client:
+            return None
+        
         try:
-            # Reduce signal strength in uncertain market conditions
-            if 'bb_position' in data.columns:
-                bb_position = data['bb_position'].iloc[-1]
-                
-                # Reduce strength if price is at extremes
-                if bb_position > 0.8 or bb_position < 0.2:
-                    action.value *= 0.8  # Reduce signal strength
-                    action.reason += " (adjusted for extreme BB position)"
-            
-            return action
-            
+            ticker = self.exchange_client.get_ticker(symbol=symbol)
+            return float(ticker['last'])
         except Exception as e:
-            logger.error(f"Error adjusting action for market conditions: {e}")
-            return action
+            self.logger.error(f"Error getting current price: {e}")
+            return None
     
-    def validate_action(self, action: Action, data: pd.DataFrame) -> bool:
-        """Validate action before execution"""
+    def get_balance(self, asset: str = None) -> Dict[str, float]:
+        """
+        Get account balance.
+        
+        Args:
+            asset: Specific asset to get balance for (e.g., "BTC", "USDT")
+            
+        Returns:
+            Balance dictionary
+        """
+        if not self.exchange_client:
+            return {}
+        
         try:
-            # Check if action is valid
-            if action.action not in ["BUY", "SELL", "HOLD"]:
-                logger.error(f"Invalid action: {action.action}")
-                return False
-            
-            # Check if value is reasonable - HOLD actions can have 0 value
-            if action.action != "HOLD" and action.value <= 0:
-                logger.error(f"Invalid action value for {action.action}: {action.value}")
-                return False
-            
-            # Additional validation can be added here
-            return True
-            
+            balance = self.exchange_client.get_balance()
+            if asset:
+                return {asset: balance.get(asset, 0.0)}
+            return balance
         except Exception as e:
-            logger.error(f"Error validating action: {e}")
-            return False
-    
-    # Utility methods
-    def calculate_rsi(self, prices: np.ndarray, period: int = 14) -> np.ndarray:
-        """Calculate RSI indicator"""
-        try:
-            deltas = np.diff(prices)
-            seed = deltas[:period+1]
-            up = seed[seed >= 0].sum() / period
-            down = -seed[seed < 0].sum() / period
-            rs = up / down if down != 0 else 0
-            rsi = np.zeros_like(prices)
-            rsi[:period] = 100.0 - 100.0 / (1.0 + rs)
-            
-            for i in range(period, len(prices)):
-                delta = deltas[i-1]
-                if delta > 0:
-                    upval = delta
-                    downval = 0.0
-                else:
-                    upval = 0.0
-                    downval = -delta
-                
-                up = (up * (period - 1) + upval) / period
-                down = (down * (period - 1) + downval) / period
-                rs = up / down if down != 0 else 0
-                rsi[i] = 100.0 - 100.0 / (1.0 + rs)
-            
-            return rsi
-            
-        except Exception as e:
-            logger.error(f"Error calculating RSI: {e}")
-            return np.zeros_like(prices)
-    
-    def calculate_sma(self, prices: np.ndarray, period: int) -> np.ndarray:
-        """Calculate Simple Moving Average"""
-        try:
-            return pd.Series(prices).rolling(window=period).mean().values
-        except Exception as e:
-            logger.error(f"Error calculating SMA: {e}")
-            return np.zeros_like(prices)
-    
-    def get_account_info(self) -> Dict[str, Any]:
-        """Get account information from exchange"""
-        try:
-            if not self.exchange_client:
-                return {}
-            
-            account_info = self.exchange_client.get_account_info()
-            return account_info
-            
-        except Exception as e:
-            logger.error(f"Error getting account info: {e}")
+            self.logger.error(f"Error getting balance: {e}")
             return {}
     
-    def get_balance(self, asset: str = "USDT") -> Dict[str, Any]:
-        """Get balance for specific asset"""
-        try:
-            if not self.exchange_client:
-                return {"free": "0", "locked": "0"}
-            
-            balance = self.exchange_client.get_balance(asset)
-            return {
-                "asset": balance.asset,
-                "free": balance.free,
-                "locked": balance.locked
-            }
-            
-        except Exception as e:
-            logger.error(f"Error getting balance: {e}")
-            return {"free": "0", "locked": "0"}
-    
-    def get_current_price(self, symbol: str = None) -> float:
-        """Get current price for symbol"""
-        try:
-            if not self.exchange_client:
-                return 0.0
-            
-            symbol = symbol or self.trading_pair.replace('/', '')
-            return self.exchange_client.get_current_price(symbol)
-            
-        except Exception as e:
-            logger.error(f"Error getting current price: {e}")
-            return 0.0
-    
-    def get_bot_info(self) -> Dict[str, Any]:
-        """Get bot information"""
-        return {
-            "name": self.bot_name,
-            "description": self.description,
-            "version": self.version,
-            "bot_type": self.bot_type,
-            "exchange_type": self.exchange_type,
-            "trading_pair": self.trading_pair,
-            "models_loaded": self.is_models_loaded,
-            "analysis_count": self.analysis_count,
-            "last_analysis": self.last_analysis_time.isoformat() if self.last_analysis_time else None
-        }
-    
-    def get_configuration_schema(self) -> Dict[str, Any]:
-        """Get configuration schema for this bot - to be overridden by subclasses"""
-        return {
-            "type": "object",
-            "properties": {
-                "max_data_points": {
-                    "type": "integer",
-                    "minimum": 100,
-                    "maximum": 5000,
-                    "default": 1000,
-                    "description": "Maximum number of historical data points to use"
-                },
-                "required_warmup_periods": {
-                    "type": "integer",
-                    "minimum": 20,
-                    "maximum": 200,
-                    "default": 50,
-                    "description": "Minimum number of periods required for analysis"
-                }
-            },
-            "required": ["max_data_points", "required_warmup_periods"],
-            "additionalProperties": True
-        }
-    
-    # Backward compatibility methods
-    def analyze_market(self, market_data: pd.DataFrame) -> Action:
-        """Backward compatibility method - delegates to execute_algorithm"""
-        return self.execute_algorithm(market_data, "1h")
-    
-    def analyze_market_simple(self, market_info: Dict[str, Any]) -> Action:
+    def preprocess_data(self, data: pd.DataFrame) -> pd.DataFrame:
         """
-        Simplified market analysis method that accepts basic market info
-        and performs full cycle analysis
+        Preprocess market data. Developers can override this method.
         
         Args:
-            market_info: Dictionary containing basic market information
-                        Keys: symbol, current_price, timestamp
-                        
+            data: Raw market data DataFrame
+            
         Returns:
-            Action: Trading action based on full analysis
+            Preprocessed DataFrame
         """
-        try:
-            # Extract timeframe from config or use default
-            timeframe = self.config.get('timeframe', '1h')
+        if data.empty:
+            return data
+        
+        # Basic preprocessing
+        processed_data = data.copy()
+        
+        # Handle missing values
+        processed_data = processed_data.ffill().bfill()
+        
+        # Add basic technical indicators
+        processed_data = self._add_basic_indicators(processed_data)
+        
+        return processed_data
+    
+    def _add_basic_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Add basic technical indicators."""
+        if data.empty:
+            return data
+        
+        # Simple Moving Averages
+        data['sma_20'] = data['close'].rolling(window=20).mean()
+        data['sma_50'] = data['close'].rolling(window=50).mean()
+        
+        # Exponential Moving Averages
+        data['ema_12'] = data['close'].ewm(span=12).mean()
+        data['ema_26'] = data['close'].ewm(span=26).mean()
+        
+        # RSI
+        delta = data['close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        data['rsi'] = 100 - (100 / (1 + rs))
+        
+        # MACD
+        data['macd'] = data['ema_12'] - data['ema_26']
+        data['macd_signal'] = data['macd'].ewm(span=9).mean()
+        data['macd_histogram'] = data['macd'] - data['macd_signal']
+        
+        # Bollinger Bands
+        data['bb_middle'] = data['close'].rolling(window=20).mean()
+        bb_std = data['close'].rolling(window=20).std()
+        data['bb_upper'] = data['bb_middle'] + (bb_std * 2)
+        data['bb_lower'] = data['bb_middle'] - (bb_std * 2)
+        
+        # Volume indicators (only if volume column exists)
+        if 'volume' in data.columns:
+            data['volume_sma'] = data['volume'].rolling(window=20).mean()
+            data['volume_ratio'] = data['volume'] / data['volume_sma']
+        else:
+            # Create dummy volume data if not available
+            data['volume'] = 1000.0  # Default volume
+            data['volume_sma'] = 1000.0
+            data['volume_ratio'] = 1.0
+        
+        return data
+    
+    def validate_signal(self, signal: Dict[str, Any]) -> bool:
+        """
+        Validate trading signal. Developers can override this method.
+        
+        Args:
+            signal: Signal dictionary from execute_algorithm
             
-            # Use full cycle analysis which includes data crawling
-            return self.execute_full_cycle(timeframe)
+        Returns:
+            True if signal is valid, False otherwise
+        """
+        if not signal:
+            return False
+        
+        required_fields = ['action', 'amount', 'reason']
+        if not all(field in signal for field in required_fields):
+            return False
+        
+        if signal['action'] not in ['BUY', 'SELL', 'HOLD']:
+            return False
+        
+        if signal['amount'] <= 0:
+            return False
+        
+        return True
+    
+    def update_performance(self, action_result: Dict[str, Any]):
+        """
+        Update bot performance metrics. Developers can override this method.
+        
+        Args:
+            action_result: Result of executed action
+        """
+        if action_result and 'success' in action_result:
+            if action_result['success']:
+                self.logger.info(f"Action executed successfully: {action_result}")
+            else:
+                self.logger.warning(f"Action failed: {action_result}")
+    
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """
+        Get current performance metrics. Developers can override this method.
+        
+        Returns:
+            Dictionary of performance metrics
+        """
+        return {
+            'total_actions': 0,
+            'successful_actions': 0,
+            'failed_actions': 0,
+            'last_action_time': self.last_action_time,
+            'prediction_cycle': self.prediction_cycle,
+            'prediction_cycle_configurable': self.prediction_cycle_configurable
+        }
+    
+    def get_supported_prediction_cycles(self) -> List[str]:
+        """
+        Get list of supported prediction cycles. Developers can override this method.
+        
+        Returns:
+            List of supported prediction cycle strings
+        """
+        return ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
+    
+    def get_recommended_prediction_cycle(self) -> str:
+        """
+        Get recommended prediction cycle. Developers can override this method.
+        
+        Returns:
+            Recommended prediction cycle string
+        """
+        return "15m"
+    
+    def validate_prediction_cycle(self, cycle: str) -> bool:
+        """
+        Validate prediction cycle. Developers can override this method.
+        
+        Args:
+            cycle: Prediction cycle to validate
             
-        except Exception as e:
-            logger.error(f"Error in simplified market analysis: {e}")
-            return Action("HOLD", 0.0, f"Analysis error: {str(e)}") 
+        Returns:
+            True if valid, False otherwise
+        """
+        supported = self.get_supported_prediction_cycles()
+        return cycle in supported
+    
+    def get_adaptive_parameters(self) -> Dict[str, Any]:
+        """
+        Get adaptive parameters based on current prediction cycle. 
+        Developers can override this method to provide cycle-specific parameters.
+        
+        Returns:
+            Dictionary of adaptive parameters
+        """
+        # Default adaptive parameters
+        cycle_params = {
+            "1m": {
+                "data_timeframe": "1m",
+                "data_limit": 100,
+                "description": "Scalping - Very frequent signals"
+            },
+            "5m": {
+                "data_timeframe": "1m",
+                "data_limit": 300,
+                "description": "Day Trading - Frequent signals"
+            },
+            "15m": {
+                "data_timeframe": "5m",
+                "data_limit": 200,
+                "description": "Swing Trading - Standard signals"
+            },
+            "30m": {
+                "data_timeframe": "5m",
+                "data_limit": 300,
+                "description": "Swing Trading - Moderate signals"
+            },
+            "1h": {
+                "data_timeframe": "15m",
+                "data_limit": 100,
+                "description": "Position Trading - Conservative signals"
+            },
+            "4h": {
+                "data_timeframe": "1h",
+                "data_limit": 50,
+                "description": "Long-term - Very conservative signals"
+            },
+            "1d": {
+                "data_timeframe": "4h",
+                "data_limit": 30,
+                "description": "Long-term - Extremely conservative signals"
+            }
+        }
+        
+        return cycle_params.get(self.prediction_cycle, cycle_params["15m"])
+    
+    def cleanup(self):
+        """
+        Cleanup resources. Developers can override this method.
+        """
+        self.logger.info(f"{self.__class__.__name__} cleanup completed")
+    
+    def __del__(self):
+        """Destructor to ensure cleanup."""
+        self.cleanup() 

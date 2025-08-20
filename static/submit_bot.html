@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Submit Bot</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="icon" href="/static/favicon.ico">
+</head>
+<body class="bg-light">
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="/static/dev_sandbox_v2.html"><i class="fas fa-robot"></i> Developer</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarsMain" aria-controls="navbarsMain" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarsMain">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          <li class="nav-item"><a class="nav-link" href="/static/dev_sandbox_v2.html"><i class="fas fa-flask"></i> Dev Sandbox</a></li>
+          <li class="nav-item"><a class="nav-link" href="/static/drafts.html"><i class="fas fa-save"></i> Drafts</a></li>
+          <li class="nav-item"><a class="nav-link active" aria-current="page" href="/static/submit_bot.html"><i class="fas fa-upload"></i> Submit Bot</a></li>
+          <li class="nav-item"><a class="nav-link" href="https://github.com/TienDoan274/trade-bot-marketplace" target="_blank" rel="noopener"><i class="fab fa-github"></i> GitHub</a></li>
+        </ul>
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="fas fa-user"></i> <span id="navUserEmail">Developer</span>
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+              <li><a class="dropdown-item" href="/static/dev_sandbox_v2.html">Dev Sandbox</a></li>
+              <li><a class="dropdown-item" href="/static/drafts.html">Drafts</a></li>
+              <li><a class="dropdown-item" href="/static/submit_bot.html">Submit Bot</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item" href="#" onclick="logout()">Logout</a></li>
+            </ul>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container py-4">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Submit Bot</h5>
+        <p class="text-muted">Optional: provide a draft key in the URL as ?draft=... to auto-fill.</p>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Name</label>
+            <input type="text" id="name" class="form-control" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Version</label>
+            <input type="text" id="version" class="form-control" value="1.0.0" />
+          </div>
+          <div class="col-12">
+            <label class="form-label">Description</label>
+            <textarea id="description" class="form-control" rows="2"></textarea>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Category</label>
+            <select id="category" class="form-select"></select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Price / month</label>
+            <input type="number" id="price" class="form-control" value="0" step="0.01" />
+          </div>
+          <div class="col-md-3 d-flex align-items-end">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="isFree" checked>
+              <label class="form-check-label" for="isFree">Is Free</label>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Type</label>
+            <select id="botType" class="form-select">
+              <option value="TECHNICAL" selected>TECHNICAL</option>
+              <option value="ML">ML</option>
+              <option value="DL">DL</option>
+              <option value="LLM">LLM</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Code (from Draft or paste below)</label>
+            <textarea id="code" class="form-control" rows="10"></textarea>
+          </div>
+          <div class="col-12">
+            <button class="btn btn-success" onclick="submitBot()">Submit</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let token = '';
+    function authHeaders() { return token ? { 'Authorization': `Bearer ${token}` } : {}; }
+    function logout() { localStorage.removeItem('access_token'); localStorage.removeItem('email'); window.location.href = '/static/login.html'; }
+
+    window.addEventListener('load', async () => {
+      const t = localStorage.getItem('access_token');
+      if (!t) { 
+        // In development mode, use a test token
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+          token = 'test';
+          console.log('Using development test token');
+        } else {
+          window.location.href = '/static/login.html?next=' + encodeURIComponent('/static/submit_bot.html'); 
+          return; 
+        }
+      } else {
+        token = t;
+      }
+      document.getElementById('navUserEmail').innerText = localStorage.getItem('email') || 'Developer';
+      await loadCategories();
+      // Prefill from localStorage if available
+      const pendingCode = localStorage.getItem('pending_submit_code');
+      if (pendingCode !== null) {
+        document.getElementById('code').value = pendingCode;
+        const name = localStorage.getItem('pending_submit_name'); if (name) document.getElementById('name').value = name;
+        const desc = localStorage.getItem('pending_submit_description'); if (desc) document.getElementById('description').value = desc;
+        const cat = localStorage.getItem('pending_submit_category'); if (cat) document.getElementById('category').value = cat;
+        const ver = localStorage.getItem('pending_submit_version'); if (ver) document.getElementById('version').value = ver;
+        const type = localStorage.getItem('pending_submit_type'); if (type) document.getElementById('botType').value = type;
+        const price = localStorage.getItem('pending_submit_price'); if (price) document.getElementById('price').value = price;
+        const free = localStorage.getItem('pending_submit_free'); if (free !== null) document.getElementById('isFree').checked = free === '1';
+        // Clear after use
+        ['pending_submit_code','pending_submit_name','pending_submit_description','pending_submit_category','pending_submit_version','pending_submit_type','pending_submit_price','pending_submit_free'].forEach(k=>localStorage.removeItem(k));
+      }
+      const params = new URLSearchParams(window.location.search);
+      const draftId = params.get('draft');
+      if (draftId) { await fillFromDraft(draftId); }
+      // Load drafts into a selector for quick pick
+      await populateDraftSelector();
+    });
+
+    async function loadCategories() {
+      try { const resp = await fetch('/bots/categories/'); const cats = await resp.json(); const sel = document.getElementById('category'); sel.innerHTML = ''; (cats||[]).forEach(c=>{ const o=document.createElement('option'); o.value=c.id; o.textContent=c.name; sel.appendChild(o); }); } catch (_) {}
+    }
+
+    async function populateDraftSelector() {
+      try {
+        console.log('Loading drafts for selector...'); // Debug log
+        const resp = await fetch('/api/dev-sandbox/list-saved-bots', { headers: authHeaders() });
+        const data = await resp.json();
+        console.log('Draft selector API response:', data); // Debug log
+        if (!resp.ok || !data.success) {
+          console.log('Failed to load drafts for selector'); // Debug log
+          return;
+        }
+        const drafts = data.drafts || data.bots || []; // Try both fields
+        console.log('Drafts for selector:', drafts); // Debug log
+        
+        const cont = document.createElement('div');
+        cont.className = 'mb-3';
+        cont.innerHTML = '<label class="form-label">Load from Draft</label>';
+        const row = document.createElement('div'); row.className = 'input-group';
+        const sel = document.createElement('select'); sel.className = 'form-select'; sel.id = 'draftPicker';
+        const def = document.createElement('option'); def.value=''; def.text='Select a draft...'; sel.appendChild(def);
+        drafts.forEach(b=>{ 
+          const o = document.createElement('option'); 
+          o.value=b.id; 
+          o.text=`${b.name} (${b.created_at})`; 
+          sel.appendChild(o); 
+        });
+        const btn = document.createElement('button'); btn.className='btn btn-outline-primary'; btn.type='button'; btn.textContent='Load'; btn.onclick = async ()=>{ const k=sel.value; if (k) await fillFromDraft(k); };
+        row.appendChild(sel); row.appendChild(btn); cont.appendChild(row);
+        const form = document.querySelector('.card .card-body .row');
+        form.parentNode.insertBefore(cont, form);
+      } catch(e) { 
+        console.error('Error in populateDraftSelector:', e); // Debug log
+      }
+    }
+
+    async function fillFromDraft(draftId) {
+      try {
+        console.log('Loading draft ID:', draftId); // Debug log
+        const resp = await fetch(`/api/dev-sandbox/load-bot-code/${draftId}`, { headers: authHeaders() });
+        const data = await resp.json();
+        console.log('Load draft API response:', data); // Debug log
+        if (!resp.ok || !data.success) { 
+          console.log('Failed to load draft:', data); // Debug log
+          alert('Failed to load draft: ' + (data.message || 'Unknown error')); 
+          return; 
+        }
+        const draft = data.draft || data; // Try both structures
+        console.log('Draft data:', draft); // Debug log
+        document.getElementById('name').value = draft.name || '';
+        document.getElementById('version').value = '1.0.0';
+        document.getElementById('description').value = draft.description || '';
+        if (draft.category_id) document.getElementById('category').value = draft.category_id;
+        document.getElementById('code').value = draft.bot_code || '';
+        console.log('Form filled with draft data'); // Debug log
+      } catch (e) { 
+        console.error('Error loading draft:', e); // Debug log
+        alert('Error: ' + e.message); 
+      }
+    }
+
+    async function submitBot() {
+      try {
+        const fd = new FormData();
+        fd.append('name', document.getElementById('name').value || 'My Bot');
+        fd.append('description', document.getElementById('description').value || '');
+        fd.append('category_id', document.getElementById('category').value || '');
+        fd.append('price_per_month', document.getElementById('price').value || '0');
+        fd.append('is_free', document.getElementById('isFree').checked);
+        fd.append('bot_type', document.getElementById('botType').value || 'TECHNICAL');
+        fd.append('version', document.getElementById('version').value || '1.0.0');
+        fd.append('config_schema', '{}');
+        fd.append('default_config', '{}');
+        const codeBlob = new Blob([document.getElementById('code').value || ''], { type: 'text/plain' });
+        const file = new File([codeBlob], 'bot.py', { type: 'text/plain' });
+        fd.append('file', file);
+        const resp = await fetch('/bots/with-code', { method: 'POST', headers: authHeaders(), body: fd });
+        const data = await resp.json();
+        if (resp.ok) { alert('Submitted! Bot is pending review by admins. Bot ID: ' + data.id); }
+        else { alert('Submit failed: ' + (data.detail || data.message)); }
+      } catch (e) { alert('Error submitting: ' + e.message); }
+    }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/js/all.min.js"></script>
+</body>
+</html> 
